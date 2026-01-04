@@ -22,12 +22,14 @@ import { gateway } from "../models";
 import { createLocalSandbox, type Sandbox } from "./sandbox";
 
 const agentModeSchema = z.enum(["interactive", "background"]);
+const autoApproveSchema = z.enum(["off", "edits", "all"]);
 
 const callOptionsSchema = z.object({
   workingDirectory: z.string(),
   mode: agentModeSchema.optional(),
   customInstructions: z.string().optional(),
   sandbox: z.custom<Sandbox>().optional(),
+  autoApprove: autoApproveSchema.optional(),
 });
 
 export type DeepAgentCallOptions = z.infer<typeof callOptionsSchema>;
@@ -65,10 +67,12 @@ export const deepAgent = new ToolLoopAgent({
   prepareCall: ({ options, model, ...settings }) => {
     const workingDirectory = options?.workingDirectory ?? process.cwd();
     const mode: AgentMode = options?.mode ?? "interactive";
+    const autoApprove = options?.autoApprove ?? "off";
 
     // Update shared context for tool approval functions
     sharedContext.workingDirectory = workingDirectory;
     sharedContext.mode = mode;
+    sharedContext.autoApprove = autoApprove;
 
     const customInstructions = options?.customInstructions;
 
