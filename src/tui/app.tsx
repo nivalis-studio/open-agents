@@ -10,12 +10,14 @@ import { renderMarkdown } from "./lib/markdown.js";
 import { useChatContext } from "./chat-context.js";
 import { useReasoningContext } from "./reasoning-context.js";
 import { useExpandedView } from "./expanded-view-context.js";
+import { useTodoView } from "./todo-view-context.js";
 import { ToolCall } from "./components/tool-call.js";
 import { TaskGroupView } from "./components/task-group-view.js";
 import { StatusBar } from "./components/status-bar.js";
 import { InputBox } from "./components/input-box.js";
 import { Header } from "./components/header.js";
 import { pasteCollapseLineThreshold, tuiAgentModelId } from "./config.js";
+import { extractTodosFromLastAssistantMessage } from "./utils/extract-todos.js";
 import type {
   TUIOptions,
   TUIAgentUIMessagePart,
@@ -95,11 +97,13 @@ const ReasoningTracker = memo(function ReasoningTracker({
 function ToolPartWrapper({
   part,
   activeApprovalId,
+  isExpanded,
 }: {
   part: TUIAgentUIToolPart;
   activeApprovalId: string | null;
+  isExpanded: boolean;
 }) {
-  return <ToolCall part={part} activeApprovalId={activeApprovalId} />;
+  return <ToolCall part={part} activeApprovalId={activeApprovalId} isExpanded={isExpanded} />;
 }
 
 type RenderPartOptions = {
@@ -141,7 +145,7 @@ function renderPart(
 
   if (isToolUIPart(part)) {
     return (
-      <ToolPartWrapper key={key} part={part} activeApprovalId={activeApprovalId} />
+      <ToolPartWrapper key={key} part={part} activeApprovalId={activeApprovalId} isExpanded={isExpanded} />
     );
   }
 
@@ -420,6 +424,7 @@ const StreamingStatusBar = memo(function StreamingStatusBar({
   messages: TUIAgentUIMessage[];
 }) {
   const { getThinkingState } = useReasoningContext();
+  const { isTodoVisible } = useTodoView();
   const statusText = useStatusText(messages);
   const [, forceUpdate] = useState(0);
 
@@ -427,6 +432,12 @@ const StreamingStatusBar = memo(function StreamingStatusBar({
   const lastMessage = messages[messages.length - 1];
   const messageId = lastMessage?.id ?? "";
   const thinkingState = getThinkingState(messageId);
+
+  // Extract todos from the most recent assistant message in the current exchange
+  const todos = useMemo(
+    () => extractTodosFromLastAssistantMessage(messages),
+    [messages]
+  );
 
   // Force re-render periodically to update thinking duration while thinking
   useEffect(() => {
@@ -444,6 +455,8 @@ const StreamingStatusBar = memo(function StreamingStatusBar({
       isStreaming={true}
       status={statusText}
       thinkingState={thinkingState}
+      todos={todos}
+      isTodoVisible={isTodoVisible}
     />
   );
 });
@@ -470,6 +483,7 @@ function AppContent({ options }: AppProps) {
   const { exit } = useApp();
   const { chat, state, cycleAutoAcceptMode } = useChatContext();
   const { isExpanded, toggleExpanded } = useExpandedView();
+  const { toggleTodoView } = useTodoView();
   const [wasInterrupted, setWasInterrupted] = useState(false);
 
   const { messages, sendMessage, status, stop, error } = useChat({
@@ -512,6 +526,9 @@ function AppContent({ options }: AppProps) {
     }
     if (input === "o" && key.ctrl) {
       toggleExpanded();
+    }
+    if (input === "t" && key.ctrl) {
+      toggleTodoView();
     }
   });
 

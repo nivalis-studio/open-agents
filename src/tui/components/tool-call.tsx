@@ -467,9 +467,11 @@ export function SubagentToolCall({
 export function ToolCall({
   part,
   activeApprovalId,
+  isExpanded = false,
 }: {
   part: TUIAgentUIToolPart;
   activeApprovalId: string | null;
+  isExpanded?: boolean;
 }) {
   const running =
     part.state === "input-streaming" || part.state === "input-available";
@@ -625,18 +627,57 @@ export function ToolCall({
     }
 
     case "tool-todo_write": {
+      const todos = part.input?.todos as Array<{ id: string; content: string; status: string }> | undefined;
+      const todoCount = todos?.length ?? 0;
+      const completedCount = todos?.filter(t => t.status === "completed").length ?? 0;
+      const inProgressCount = todos?.filter(t => t.status === "in_progress").length ?? 0;
+      
+      const getTodoIcon = (status: string) => {
+        switch (status) {
+          case "completed": return "☒";
+          case "in_progress": return "◎";
+          default: return "☐";
+        }
+      };
+      
+      const getTodoColor = (status: string) => {
+        switch (status) {
+          case "completed": return "gray";
+          case "in_progress": return "yellow";
+          default: return "white";
+        }
+      };
+      
       return (
-        <ToolLayout
-          name="TodoWrite"
-          summary="Updating tasks"
-          output={
-            part.state === "output-available" && (
-              <Text color="white">Tasks updated</Text>
-            )
-          }
-          error={error}
-          running={running}
-        />
+        <Box flexDirection="column">
+          <ToolLayout
+            name="TodoWrite"
+            summary={`${todoCount} tasks (${completedCount} done, ${inProgressCount} in progress)`}
+            output={
+              part.state === "output-available" && (
+                <Text color="white">Tasks updated</Text>
+              )
+            }
+            error={error}
+            running={running}
+          />
+          {isExpanded && todos && todos.length > 0 && (
+            <Box flexDirection="column" paddingLeft={3}>
+              {todos.map((todo) => (
+                <Box key={todo.id}>
+                  <Text color={getTodoColor(todo.status)}>
+                    {getTodoIcon(todo.status)}{" "}
+                    {todo.status === "completed" ? (
+                      <Text strikethrough>{todo.content}</Text>
+                    ) : (
+                      todo.content
+                    )}
+                  </Text>
+                </Box>
+              ))}
+            </Box>
+          )}
+        </Box>
       );
     }
 

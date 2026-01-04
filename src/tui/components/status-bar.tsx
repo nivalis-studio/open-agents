@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Box, Text } from "ink";
 import type { ThinkingState } from "../reasoning-context.js";
+import type { TodoItem } from "../../agent/types.js";
 
 const SILLY_WORDS = [
   "Thinking",
@@ -38,6 +39,8 @@ type StatusBarProps = {
   isStreaming: boolean;
   status?: string;
   thinkingState: ThinkingState;
+  todos?: TodoItem[] | null;
+  isTodoVisible?: boolean;
 };
 
 function getThinkingMeta(thinkingState: ThinkingState): string {
@@ -86,23 +89,83 @@ function StatusIndicator({
   return <Text color="green">✓ {status || "Done"}</Text>;
 }
 
+function getTodoIcon(status: TodoItem["status"]): string {
+  switch (status) {
+    case "completed":
+      return "☒";
+    case "in_progress":
+      return "◎";
+    case "pending":
+    default:
+      return "☐";
+  }
+}
+
+function getTodoColor(status: TodoItem["status"]): string {
+  switch (status) {
+    case "completed":
+      return "gray";
+    case "in_progress":
+      return "yellow";
+    case "pending":
+    default:
+      return "white";
+  }
+}
+
+function TodoList({ todos }: { todos: TodoItem[] }) {
+  const hasIncompleteTodos = todos.some((t) => t.status !== "completed");
+  if (!hasIncompleteTodos) return null;
+
+  return (
+    <Box flexDirection="column" marginLeft={2}>
+      {todos.map((todo) => (
+        <Box key={todo.id}>
+          <Text color={getTodoColor(todo.status)}>
+            {getTodoIcon(todo.status)}{" "}
+            {todo.status === "completed" ? (
+              <Text strikethrough>{todo.content}</Text>
+            ) : (
+              todo.content
+            )}
+          </Text>
+        </Box>
+      ))}
+    </Box>
+  );
+}
+
 // Not memoized to allow animation
 export function StatusBar({
   isStreaming,
   status,
   thinkingState,
+  todos,
+  isTodoVisible = true,
 }: StatusBarProps) {
   if (!isStreaming && !status) {
     return null;
   }
 
+  const hasTodos = todos && todos.length > 0;
+  const hasIncompleteTodos = hasTodos && todos.some((t) => t.status !== "completed");
+  const showTodos = isTodoVisible && hasIncompleteTodos;
+
+  const todoHint = hasTodos && hasIncompleteTodos
+    ? ` · ctrl+t to ${isTodoVisible ? "hide" : "show"} todos`
+    : "";
+
   return (
-    <Box marginTop={1}>
-      <StatusIndicator
-        isStreaming={isStreaming}
-        status={status}
-        thinkingState={thinkingState}
-      />
+    <Box flexDirection="column" marginTop={1}>
+      <Box>
+        <StatusIndicator
+          isStreaming={isStreaming}
+          status={status}
+          thinkingState={thinkingState}
+        />
+        {hasTodos && <Text color="gray">{todoHint}</Text>}
+      </Box>
+      {showTodos && <TodoList todos={todos} />}
     </Box>
   );
 }
