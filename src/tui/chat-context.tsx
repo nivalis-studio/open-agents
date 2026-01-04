@@ -4,6 +4,7 @@ import React, {
   useState,
   useMemo,
   useCallback,
+  useEffect,
   type ReactNode,
 } from "react";
 import {
@@ -13,6 +14,7 @@ import {
 import { Chat } from "@ai-sdk/react";
 import { createAgentTransport } from "./transport.js";
 import { tuiAgent } from "./config.js";
+import { clearSessionRules } from "../agent/utils/shared-context.js";
 import type {
   TUIAgentCallOptions,
   TUIAgentUIMessage,
@@ -104,6 +106,10 @@ export function ChatProvider({
     useState<LanguageModelUsage>(DEFAULT_USAGE);
 
   const contextLimit = useMemo(() => getContextLimit(model ?? ""), [model]);
+
+  useEffect(() => {
+    clearSessionRules();
+  }, []);
 
   const handleUsageUpdate = useCallback((newUsage: LanguageModelUsage) => {
     setUsage(newUsage);
