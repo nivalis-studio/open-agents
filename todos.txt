@@ -29,5 +29,6 @@
 
 Turn this into full OSS end-to-end CC
 - [ ] cli coding agent
-- [ ] web ui (background agents with sandbox)
+- [ ] web ui (background agents with sandbox) - https://github.com/vercel-labs/coding-agent-template
 - [ ] slack bot
+- [ ] durable agent support (create my own wrapper which is const agent = durable(agent); agent.stream())
