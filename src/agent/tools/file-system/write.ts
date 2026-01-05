@@ -1,7 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import * as path from "path";
-import { isPathWithinDirectory, getSandbox, sharedContext, pathMatchesGlob } from "../../utils";
+import { isPathWithinDirectory, getSandbox, pathMatchesGlob, getApprovalContext } from "../../utils";
+import type { ApprovalRule } from "../../types";
 
 const writeInputSchema = z.object({
   filePath: z.string().describe("Absolute path to the file to write"),
@@ -41,24 +42,29 @@ interface EditToolOptions {
 /**
  * Check if a path is outside the working directory.
  */
-function isOutsideWorkingDirectory(filePath: string): boolean {
+function isOutsideWorkingDirectory(filePath: string, workingDirectory: string): boolean {
   const absolutePath = path.isAbsolute(filePath)
     ? filePath
-    : path.resolve(sharedContext.workingDirectory, filePath);
-  return !isPathWithinDirectory(absolutePath, sharedContext.workingDirectory);
+    : path.resolve(workingDirectory, filePath);
+  return !isPathWithinDirectory(absolutePath, workingDirectory);
 }
 
 /**
  * Check if a file path matches any path-glob approval rules for a specific tool.
  */
-function pathMatchesApprovalRule(filePath: string, toolName: "write" | "edit"): boolean {
+function pathMatchesApprovalRule(
+  filePath: string,
+  toolName: "write" | "edit",
+  workingDirectory: string,
+  approvalRules: ApprovalRule[]
+): boolean {
   const absolutePath = path.isAbsolute(filePath)
     ? filePath
-    : path.resolve(sharedContext.workingDirectory, filePath);
+    : path.resolve(workingDirectory, filePath);
 
-  for (const rule of sharedContext.approvalRules) {
+  for (const rule of approvalRules) {
     if (rule.type === "path-glob" && rule.tool === toolName) {
-      if (pathMatchesGlob(absolutePath, rule.glob, sharedContext.workingDirectory)) {
+      if (pathMatchesGlob(absolutePath, rule.glob, workingDirectory)) {
         return true;
       }
     }
@@ -66,72 +72,31 @@ function pathMatchesApprovalRule(filePath: string, toolName: "write" | "edit"): 
   return false;
 }
 
-/**
- * Create a combined approval function for write operations.
- * Always requires approval if path is outside CWD, otherwise uses the provided option.
- * In background mode, auto-approve all operations (except outside working directory).
- * When autoApprove is "edits" or "all", auto-approve file operations within working directory.
- */
-function createWriteApprovalFn(options?: WriteToolOptions): WriteApprovalFn {
-  return async (args) => {
-    // Always need approval if outside working directory (even in background mode)
-    if (isOutsideWorkingDirectory(args.filePath)) {
-      return true;
-    }
-    // In background mode, auto-approve all operations within working directory
-    if (sharedContext.mode === "background") {
-      return false;
-    }
-    // Auto-approve edits when autoApprove is "edits" or "all"
-    if (sharedContext.autoApprove === "edits" || sharedContext.autoApprove === "all") {
-      return false;
-    }
-    // Check if path matches any saved approval rules
-    if (pathMatchesApprovalRule(args.filePath, "write")) {
-      return false;
-    }
-    // Otherwise use the configured approval setting
-    if (typeof options?.needsApproval === "function") {
-      return options.needsApproval(args);
-    }
-    return options?.needsApproval ?? true;
-  };
-}
-
-/**
- * Create a combined approval function for edit operations.
- * Always requires approval if path is outside CWD, otherwise uses the provided option.
- * In background mode, auto-approve all operations (except outside working directory).
- * When autoApprove is "edits" or "all", auto-approve file operations within working directory.
- */
-function createEditApprovalFn(options?: EditToolOptions): EditApprovalFn {
-  return async (args) => {
-    // Always need approval if outside working directory (even in background mode)
-    if (isOutsideWorkingDirectory(args.filePath)) {
-      return true;
-    }
-    // In background mode, auto-approve all operations within working directory
-    if (sharedContext.mode === "background") {
-      return false;
-    }
-    // Auto-approve edits when autoApprove is "edits" or "all"
-    if (sharedContext.autoApprove === "edits" || sharedContext.autoApprove === "all") {
-      return false;
-    }
-    // Check if path matches any saved approval rules
-    if (pathMatchesApprovalRule(args.filePath, "edit")) {
-      return false;
-    }
-    // Otherwise use the configured approval setting
-    if (typeof options?.needsApproval === "function") {
-      return options.needsApproval(args);
-    }
-    return options?.needsApproval ?? true;
-  };
-}
-
 export const writeFileTool = (options?: WriteToolOptions) => tool({
-  needsApproval: createWriteApprovalFn(options),
+  needsApproval: async (args, { experimental_context }) => {
+    const ctx = getApprovalContext(experimental_context);
+    // Always need approval if outside working directory (even in background mode)
+    if (isOutsideWorkingDirectory(args.filePath, ctx.workingDirectory)) {
+      return true;
+    }
+    // In background mode, auto-approve all operations within working directory
+    if (ctx.mode === "background") {
+      return false;
+    }
+    // Auto-approve edits when autoApprove is "edits" or "all"
+    if (ctx.autoApprove === "edits" || ctx.autoApprove === "all") {
+      return false;
+    }
+    // Check if path matches any saved approval rules
+    if (pathMatchesApprovalRule(args.filePath, "write", ctx.workingDirectory, ctx.approvalRules)) {
+      return false;
+    }
+    // Otherwise use the configured approval setting
+    if (typeof options?.needsApproval === "function") {
+      return options.needsApproval(args);
+    }
+    return options?.needsApproval ?? true;
+  },
   description: `Write content to a file on the filesystem.
 
 WHEN TO USE:
@@ -191,7 +156,30 @@ EXAMPLES:
 });
 
 export const editFileTool = (options?: EditToolOptions) => tool({
-  needsApproval: createEditApprovalFn(options),
+  needsApproval: async (args, { experimental_context }) => {
+    const ctx = getApprovalContext(experimental_context);
+    // Always need approval if outside working directory (even in background mode)
+    if (isOutsideWorkingDirectory(args.filePath, ctx.workingDirectory)) {
+      return true;
+    }
+    // In background mode, auto-approve all operations within working directory
+    if (ctx.mode === "background") {
+      return false;
+    }
+    // Auto-approve edits when autoApprove is "edits" or "all"
+    if (ctx.autoApprove === "edits" || ctx.autoApprove === "all") {
+      return false;
+    }
+    // Check if path matches any saved approval rules
+    if (pathMatchesApprovalRule(args.filePath, "edit", ctx.workingDirectory, ctx.approvalRules)) {
+      return false;
+    }
+    // Otherwise use the configured approval setting
+    if (typeof options?.needsApproval === "function") {
+      return options.needsApproval(args);
+    }
+    return options?.needsApproval ?? true;
+  },
   description: `Perform exact string replacement in a file.
 
 WHEN TO USE:
