@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo, memo } from "react";
+import { useEffect, useState, useCallback, useMemo, memo, useRef } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import { isToolUIPart, getToolName, type FileUIPart } from "ai";
 import { useChat } from "@ai-sdk/react";
@@ -507,6 +507,7 @@ function AppContent({ options }: AppProps) {
   const { isExpanded, toggleExpanded } = useExpandedView();
   const { isTodoVisible, toggleTodoView } = useTodoView();
   const [wasInterrupted, setWasInterrupted] = useState(false);
+  const initialPromptSentRef = useRef(false);
 
   const { messages, sendMessage, status, stop, error } = useChat({
     chat,
@@ -573,10 +574,12 @@ function AppContent({ options }: AppProps) {
   });
 
   useEffect(() => {
-    if (options?.initialPrompt) {
-      sendMessage({ text: options.initialPrompt });
-    }
-  }, [options?.initialPrompt, sendMessage]);
+    if (!options?.initialPrompt) return;
+    if (initialPromptSentRef.current) return;
+    if (isStreaming || messages.length > 0) return;
+    initialPromptSentRef.current = true;
+    sendMessage({ text: options.initialPrompt });
+  }, [options?.initialPrompt, isStreaming, messages.length, sendMessage]);
 
   const handleSubmit = useCallback(
     (prompt: string, files?: FileUIPart[]) => {
