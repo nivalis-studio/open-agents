@@ -66,6 +66,7 @@ To work through these todos, follow this pattern:
 - [ ] Add plan mode
 - [ ] Add automatic compaction approach as a tool
 - [ ] provider defined tools dynamic switch per request
+- [ ] cc ido approach to context management (context offloading outside of current message)
 
 ## Technical Debt
 
