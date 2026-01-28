@@ -662,6 +662,8 @@ function AppContent({ options }: AppProps) {
   const { messages, sendMessage, status, stop, error, addToolOutput } = useChat(
     {
       chat,
+      // Throttle streaming updates to reduce terminal flickering
+      experimental_throttle: 80,
     },
   );
 
