@@ -666,7 +666,7 @@ function AppContent({ options }: AppProps) {
     status,
     stop,
     error,
-    setMessages,
+    setMessages: _setMessages,
     addToolOutput,
     addToolApprovalResponse,
   } = useChat({
