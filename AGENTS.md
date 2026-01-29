@@ -33,6 +33,47 @@ bun test path/to/file.test.ts   # Run single test file
 bun test --watch                # Watch mode
 ```
 
+## Agent Laboratory Workflow
+
+Agents must be able to verify their own work. Use this loop for any non-trivial change.
+
+1. **Instrumentation**
+   - Identify the critical path you are touching. Default critical paths are the CLI agent flow and the web UI tasks flow.
+   - Create or reuse a measurable check. Use tests, logs, or UI evidence.
+
+2. **Diagnosis**
+   - Capture a baseline by running the smallest relevant check.
+   - Write down 1 to 3 hypotheses about what will change and why.
+
+3. **Iteration**
+   - Make one change at a time.
+   - Re-run the same check and compare to baseline.
+   - Keep only changes that improve the outcome and do not break tests.
+
+4. **Report**
+   - Summarize before and after results with exact commands and key outputs.
+   - If you cannot verify, say why and what would verify it.
+
+### Verification Matrix
+
+Use the smallest set that proves the change:
+
+- CLI agent flow: `turbo typecheck --filter=@open-harness/cli` and `bun test path/to/file.test.ts`
+- TUI: `turbo typecheck --filter=@open-harness/tui` and relevant unit tests
+- Agent tools: `turbo typecheck --filter=@open-harness/agent` and targeted tests
+- Web UI tasks: `turbo typecheck --filter=web` and browser verification
+
+Do not run dev servers or builds unless explicitly asked by the user.
+
+## Agent Browser
+
+When the task requires UI verification, use the agent-browser skill.
+
+- Prefer agent-browser over manual steps. Do not ask the user to click or inspect.
+- Capture screenshots and DOM evidence for before and after comparisons.
+- Record exact steps and selectors used so the workflow is repeatable.
+- If a page requires credentials or secrets, stop and ask for them.
+
 ## Git Commands
 
 **Quote paths with special characters**: File paths containing brackets (like Next.js dynamic routes `[id]`, `[slug]`) are interpreted as glob patterns by zsh. Always quote these paths in git commands:
