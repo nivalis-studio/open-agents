@@ -122,7 +122,7 @@ export function HomePage({ hasSessionCookie }: HomePageProps) {
 
       <main className="flex flex-1 flex-col items-center px-6 pt-16">
         <h1 className="mb-8 text-3xl font-light text-foreground">
-          What should we code next?
+          What should we ship next?
         </h1>
 
         <TaskInput onSubmit={handleCreateTask} isLoading={isCreating} />
