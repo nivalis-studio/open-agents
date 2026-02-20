@@ -27,6 +27,5 @@ export const SANDBOX_LIFECYCLE_MIN_SLEEP_MS = 5 * 1000;
  * - 3000: Next.js, Express, Remix
  * - 5173: Vite, SvelteKit
  * - 4321: Astro
- * - 8080: Generic / custom servers
  */
-export const DEFAULT_SANDBOX_PORTS = [3000, 5173, 4321, 8080];
+export const DEFAULT_SANDBOX_PORTS = [3000, 5173, 4321];
