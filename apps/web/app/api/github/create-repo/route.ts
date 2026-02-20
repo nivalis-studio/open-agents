@@ -2,7 +2,10 @@ import { connectSandbox } from "@open-harness/sandbox";
 import { gateway, generateText } from "ai";
 import { getInstallationByAccountLogin } from "@/lib/db/installations";
 import { getSessionById, updateSession } from "@/lib/db/sessions";
-import { getAppCoAuthorTrailer, getInstallationToken } from "@/lib/github/app-auth";
+import {
+  getAppCoAuthorTrailer,
+  getInstallationToken,
+} from "@/lib/github/app-auth";
 import { createRepository } from "@/lib/github/client";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { isSandboxActive } from "@/lib/sandbox/utils";

@@ -515,9 +515,7 @@ Respond with ONLY the commit message, nothing else.`,
     // Append Co-Authored-By trailer when the push uses an installation token so
     // GitHub shows "user and bot committed" on the commit (same style as Claude Code).
     const coAuthorTrailer =
-      repoTokenResult?.type === "installation"
-        ? getAppCoAuthorTrailer()
-        : null;
+      repoTokenResult?.type === "installation" ? getAppCoAuthorTrailer() : null;
     const fullCommitMessage = coAuthorTrailer
       ? `${commitMessage}\n\n${coAuthorTrailer}`
       : commitMessage;
