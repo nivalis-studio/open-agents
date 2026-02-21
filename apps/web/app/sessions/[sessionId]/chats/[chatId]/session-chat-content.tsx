@@ -18,6 +18,7 @@ import {
   Menu,
   Mic,
   Paperclip,
+  RefreshCw,
   Share2,
   Square,
   X,
@@ -674,6 +675,7 @@ export function SessionChatContent() {
     chatInfo,
     chat,
     stopChatStream,
+    retryChatStream,
     initialMessages,
     sandboxInfo,
     setSandboxInfo,
@@ -893,6 +895,31 @@ export function SessionChatContent() {
       window.removeEventListener("focus", handleWindowFocus);
     };
   }, [requestMarkChatRead]);
+
+  // Auto-recover from transient network errors (e.g. iOS "Load failed") when
+  // the tab becomes visible again or the device comes back online.  The server
+  // intentionally keeps the stream running on client disconnect, so we can
+  // clear the stale error and attempt to reconnect to the resumable stream.
+  useEffect(() => {
+    const recover = () => {
+      if (status === "error") {
+        retryChatStream();
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        recover();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", recover);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", recover);
+    };
+  }, [status, retryChatStream]);
 
   const handleModelChange = useCallback(
     async (modelId: string) => {
@@ -1556,14 +1583,6 @@ export function SessionChatContent() {
     reconnectionStatus,
   ]);
 
-  if (error) {
-    return (
-      <div className="flex flex-1 items-center justify-center">
-        <p className="text-destructive">{error.message}</p>
-      </div>
-    );
-  }
-
   return (
     <>
       {/* Header */}
@@ -1772,6 +1791,22 @@ export function SessionChatContent() {
           </div>
         </div>
       </header>
+
+      {/* Transient error banner (e.g. iOS "Load failed" after sleep) */}
+      {error && (
+        <div className="flex items-center justify-between gap-3 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+          <p className="min-w-0 truncate">{error.message}</p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+            onClick={retryChatStream}
+          >
+            <RefreshCw className="h-3 w-3" />
+            Retry
+          </Button>
+        </div>
+      )}
 
       {/* Messages */}
       <div className="relative flex-1 overflow-hidden">

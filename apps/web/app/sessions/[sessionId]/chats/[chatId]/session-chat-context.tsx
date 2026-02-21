@@ -167,6 +167,8 @@ type SessionChatContextValue = {
   syncSandboxStatus: () => Promise<SandboxStatusSyncResult>;
   /** Attempt to reconnect to an existing sandbox */
   attemptReconnection: () => Promise<ReconnectionStatus>;
+  /** Clear a transient chat error and attempt to resume an active stream */
+  retryChatStream: () => void;
   /** Update session repo info after creating a repo */
   updateSessionRepo: (info: {
     cloneUrl: string;
@@ -298,6 +300,18 @@ export function SessionChatProvider({
     resume: shouldResume,
     experimental_throttle: CHAT_UI_UPDATE_THROTTLE_MS,
   });
+
+  /**
+   * Clear a transient chat error (e.g. iOS "Load failed") and attempt to
+   * resume the server-side stream if one is still active.  This is safe to
+   * call from a visibility-change handler or a manual "Retry" button.
+   */
+  const retryChatStream = useCallback(() => {
+    // Clear the error so the chat UI becomes visible again.
+    chat.clearError();
+    // If the server-side stream is still running, reconnect to it.
+    chat.resumeStream();
+  }, [chat]);
 
   // Cleanup: always release chat instances when leaving a route.
   // If this chat is still streaming or submitted, stop local stream processing
@@ -885,6 +899,7 @@ export function SessionChatProvider({
       chatInfo,
       chat,
       stopChatStream,
+      retryChatStream,
       sandboxInfo,
       setSandboxInfo,
       clearSandboxInfo,
@@ -927,6 +942,7 @@ export function SessionChatProvider({
       chatInfo,
       chat,
       stopChatStream,
+      retryChatStream,
       sandboxInfo,
       setSandboxInfo,
       clearSandboxInfo,
