@@ -3,9 +3,6 @@
 import type { TaskToolUIPart } from "@open-harness/agent";
 import { isToolUIPart } from "ai";
 import { ExternalLink } from "lucide-react";
-import type { ComponentProps, ReactNode } from "react";
-import { Children, cloneElement, isValidElement } from "react";
-import type { BundledTheme } from "shiki";
 import { Streamdown } from "streamdown";
 import type {
   WebAgentUIMessage,
@@ -15,30 +12,13 @@ import type {
 import { TaskGroupView } from "@/components/task-group-view";
 import { ToolCall } from "@/components/tool-call";
 import type { Chat } from "@/lib/db/schema";
+import {
+  customComponents,
+  shikiThemes,
+  streamdownPlugins,
+} from "@/lib/streamdown-config";
 import { cn } from "@/lib/utils";
 import "streamdown/styles.css";
-
-const customComponents = {
-  pre: ({ children, ...props }: ComponentProps<"pre">) => {
-    const processChildren = (child: ReactNode): ReactNode => {
-      if (isValidElement<{ children?: ReactNode }>(child)) {
-        const codeContent = child.props.children;
-        if (typeof codeContent === "string") {
-          return cloneElement(child, {
-            children: codeContent.trimEnd(),
-          });
-        }
-      }
-      return child;
-    };
-    return <pre {...props}>{Children.map(children, processChildren)}</pre>;
-  },
-};
-
-const shikiThemes = ["github-dark", "github-dark"] as [
-  BundledTheme,
-  BundledTheme,
-];
 
 type ChatWithMessages = {
   chat: Chat;
@@ -204,6 +184,7 @@ export function SharedChatContent({
                                 <Streamdown
                                   mode="static"
                                   isAnimating={false}
+                                  plugins={streamdownPlugins}
                                   shikiTheme={shikiThemes}
                                   components={customComponents}
                                 >
