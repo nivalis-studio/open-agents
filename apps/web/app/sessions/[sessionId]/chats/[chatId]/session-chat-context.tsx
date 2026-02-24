@@ -27,7 +27,7 @@ import {
   useSessionGitStatus,
 } from "@/hooks/use-session-git-status";
 import { useSessionSkills } from "@/hooks/use-session-skills";
-import { AbortableChatTransport } from "@/lib/abortable-chat-transport";
+import { WorkflowChatTransport } from "@workflow/ai";
 import {
   abortChatInstanceTransport,
   getOrCreateChatInstance,
@@ -274,15 +274,38 @@ export function SessionChatProvider({
 
   const transport = useMemo(
     () =>
-      new AbortableChatTransport({
-        api: "/api/chat",
-        body: () => ({
-          sessionId: sessionRecord.id,
-          chatId: chatInfo.id,
+      new WorkflowChatTransport<WebAgentUIMessage>({
+        api: "/api/chat-durable",
+        prepareSendMessagesRequest: ({ messages: msgs }) => ({
+          body: {
+            messages: msgs,
+            sessionId: sessionRecord.id,
+            chatId: chatInfo.id,
+          },
         }),
-        prepareReconnectToStreamRequest: ({ id }) => ({
-          api: `/api/chat/${id}/stream`,
+        prepareReconnectToStreamRequest: ({ api }) => ({
+          api: `${api}?chatId=${encodeURIComponent(chatInfo.id)}`,
         }),
+        onChatSendMessage: (response) => {
+          const runId = response.headers.get("x-workflow-run-id");
+          if (runId) {
+            try {
+              localStorage.setItem(
+                `workflow-run-${chatInfo.id}`,
+                runId,
+              );
+            } catch {
+              // localStorage may be unavailable
+            }
+          }
+        },
+        onChatEnd: () => {
+          try {
+            localStorage.removeItem(`workflow-run-${chatInfo.id}`);
+          } catch {
+            // localStorage may be unavailable
+          }
+        },
       }),
     [sessionRecord.id, chatInfo.id],
   );
