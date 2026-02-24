@@ -1,13 +1,14 @@
 import {
   type LanguageModelUsage,
-  readUIMessageStream,
   tool,
   type UIToolInvocation,
 } from "ai";
 import { z } from "zod";
 import { executorSubagent } from "../subagents/executor";
 import { explorerSubagent } from "../subagents/explorer";
-import type { SubagentUIMessage } from "../subagents/types";
+import { reconstructSubagentMessage } from "../subagents/reconstruct";
+import type { SubagentMessageMetadata } from "../subagents/types";
+import type { TaskToolStreamOutput } from "../subagents/types";
 import type { ApprovalRule } from "../types";
 import {
   getApprovalContext,
@@ -147,44 +148,77 @@ NOTE: The executor subagent requires user approval before running because it has
     // Track last step usage for message metadata
     let lastStepUsage: LanguageModelUsage | undefined;
 
-    for await (const message of readUIMessageStream<SubagentUIMessage>({
-      stream: result.toUIMessageStream<SubagentUIMessage>({
-        messageMetadata: ({ part }) => {
-          // Track per-step usage from finish-step events
-          if (part.type === "finish-step") {
-            lastStepUsage = part.usage;
-            return {
-              lastStepUsage,
-              totalMessageUsage: undefined,
-              modelId: subagentModelId,
-            };
-          }
-          // On finish, include both the last step usage and total message usage
-          if (part.type === "finish") {
-            return {
-              lastStepUsage,
-              totalMessageUsage: part.totalUsage,
-              modelId: subagentModelId,
-            };
-          }
-        },
-      }),
-    })) {
-      yield message;
+    const stream = result.toUIMessageStream({
+      messageMetadata: ({ part }) => {
+        // Track per-step usage from finish-step events
+        if (part.type === "finish-step") {
+          lastStepUsage = part.usage;
+          return {
+            lastStepUsage,
+            totalMessageUsage: undefined,
+            modelId: subagentModelId,
+          };
+        }
+        // On finish, include both the last step usage and total message usage
+        if (part.type === "finish") {
+          return {
+            lastStepUsage,
+            totalMessageUsage: part.totalUsage,
+            modelId: subagentModelId,
+          };
+        }
+      },
+    });
+
+    // Instead of readUIMessageStream (which structuredClones the entire message
+    // on every chunk — O(N²)), we accumulate the raw SSE chunks as a compact
+    // newline-separated JSON buffer. Each yield sends the growing buffer string.
+    // The client reconstructs the SubagentUIMessage from this buffer.
+    //
+    // Wire cost: O(N²) in total but with ~50-200 byte chunks vs 10-100KB snapshots,
+    // giving 10-100x improvement in practice.
+    let buffer = "";
+    let metadata: SubagentMessageMetadata | undefined;
+
+    for await (const chunk of stream) {
+      buffer += JSON.stringify(chunk) + "\n";
+
+      // Track metadata for usage reporting
+      const chunkAny = chunk as Record<string, unknown>;
+      if (
+        chunkAny.type === "message-metadata" ||
+        chunkAny.type === "finish" ||
+        chunkAny.type === "start"
+      ) {
+        const chunkMetadata = chunkAny.messageMetadata as
+          | SubagentMessageMetadata
+          | undefined;
+        if (chunkMetadata) {
+          metadata = { ...metadata, ...chunkMetadata };
+        }
+      }
+
+      yield { buffer, metadata } satisfies TaskToolStreamOutput;
     }
   },
-  toModelOutput: ({ output: message }) => {
-    if (!message) {
+  toModelOutput: ({ output }) => {
+    if (!output) {
       return { type: "text", value: "Task completed." };
     }
 
+    // Reconstruct the message from the buffer to extract the summary text
+    const streamOutput = output as TaskToolStreamOutput;
+    const message = reconstructSubagentMessage(streamOutput.buffer);
     const lastTextPart = message.parts.findLast((p) => p.type === "text");
 
     if (!lastTextPart || lastTextPart.type !== "text") {
       return { type: "text", value: "Task completed." };
     }
 
-    return { type: "text", value: lastTextPart.text };
+    return {
+      type: "text",
+      value: (lastTextPart as { text: string }).text,
+    };
   },
 });
 

@@ -25,7 +25,13 @@ export { frontmatterToOptions, skillFrontmatterSchema } from "./skills/types";
 export type {
   SubagentMessageMetadata,
   SubagentUIMessage,
+  TaskToolStreamOutput,
 } from "./subagents/types";
+export {
+  reconstructSubagentMessage,
+  type ReconstructedSubagentMessage,
+  type ReconstructedPart,
+} from "./subagents/reconstruct";
 export type { BuildSystemPromptOptions } from "./system-prompt";
 export { buildSystemPrompt } from "./system-prompt";
 export {

@@ -1,44 +1,62 @@
-import type { SubagentUIMessage } from "@open-harness/agent";
+import type {
+  TaskToolStreamOutput,
+  ReconstructedSubagentMessage,
+  ReconstructedPart,
+} from "@open-harness/agent";
+import { reconstructSubagentMessage } from "@open-harness/agent";
 import { formatTokens } from "@open-harness/shared";
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import { getToolName, isTextUIPart, isToolUIPart } from "ai";
-import React from "react";
+// ai SDK imports removed — we use ReconstructedPart type guards instead
+import React, { useMemo } from "react";
 import { useChatContext } from "../../chat-context";
 import { PRIMARY_COLOR } from "../../lib/colors";
 import type { ToolRendererProps } from "../../lib/render-tool";
 import { truncateText } from "../../lib/truncate";
 import { ToolSpinner, toRelativePath } from "./shared";
 
-type SubagentMessagePart = SubagentUIMessage["parts"][number];
+function isToolPart(
+  part: ReconstructedPart,
+): part is ReconstructedPart & { type: string; toolCallId: string } {
+  return part.type.startsWith("tool-");
+}
 
-function getToolSummary(part: SubagentMessagePart, cwd: string): string {
+function isTextPart(
+  part: ReconstructedPart,
+): part is ReconstructedPart & { type: "text"; text: string } {
+  return part.type === "text";
+}
+
+function getToolSummary(part: ReconstructedPart, cwd: string): string {
+  if (!isToolPart(part)) return "";
+  const input = (part as { input?: Record<string, unknown> }).input;
   switch (part.type) {
     case "tool-read":
     case "tool-write":
     case "tool-edit":
-      return part.input?.filePath
-        ? toRelativePath(part.input.filePath, cwd)
+      return input?.filePath
+        ? toRelativePath(String(input.filePath), cwd)
         : "";
     case "tool-grep":
     case "tool-glob":
-      return part.input?.pattern ? `"${part.input.pattern}"` : "";
+      return input?.pattern ? `"${input.pattern}"` : "";
     case "tool-bash":
-      return part.input?.command ?? "";
+      return input?.command ? String(input.command) : "";
     default:
       return "";
   }
 }
 
-function SubagentToolCall({ part }: { part: SubagentMessagePart }) {
+function SubagentToolCall({ part }: { part: ReconstructedPart }) {
   const { state: chatState } = useChatContext();
   const cwd = chatState.workingDirectory ?? process.cwd();
   const { width } = useTerminalDimensions();
-  if (!isToolUIPart(part)) return null;
-  if (part.state === "input-streaming") return null;
-  const toolName = getToolName(part);
-  const isRunning = part.state === "input-available";
-  const hasError = part.state === "output-error";
+  if (!isToolPart(part)) return null;
+  const toolPart = part as { state?: string };
+  if (toolPart.state === "input-streaming") return null;
+  const toolName = part.type.replace("tool-", "");
+  const isRunning = toolPart.state === "input-available";
+  const hasError = toolPart.state === "output-error";
   const summary = getToolSummary(part, cwd);
   const terminalWidth = width ?? 80;
 
@@ -85,20 +103,30 @@ export function TaskRenderer({ part, state }: ToolRendererProps<"tool-task">) {
   const taskDenied = part.state === "output-denied";
   const taskDenialReason = taskDenied ? part.approval?.reason : undefined;
 
-  // The output is a UIMessage with parts (text, tool-invocation, etc.)
-  // Preliminary results have preliminary: true, final result has preliminary: false/undefined
+  // The output is now a TaskToolStreamOutput with a buffer of SSE chunks
   const hasOutput = part.state === "output-available";
   const isPreliminary = hasOutput && part.preliminary === true;
-  const message = hasOutput ? part.output : undefined;
+  const streamOutput = hasOutput
+    ? (part.output as TaskToolStreamOutput | undefined)
+    : undefined;
+
+  // Reconstruct the SubagentUIMessage from the SSE buffer
+  const message: ReconstructedSubagentMessage | undefined = useMemo(
+    () =>
+      streamOutput?.buffer
+        ? reconstructSubagentMessage(streamOutput.buffer)
+        : undefined,
+    [streamOutput?.buffer],
+  );
 
   // Get all parts in order, filter to text and tool parts
   const messageParts = message?.parts ?? [];
   const relevantParts = messageParts.filter((p) => {
-    if (isTextUIPart(p)) return true;
-    if (!isToolUIPart(p)) return false;
-    return p.state !== "input-streaming";
+    if (isTextPart(p)) return true;
+    if (!isToolPart(p)) return false;
+    return (p as { state?: string }).state !== "input-streaming";
   });
-  const toolParts = messageParts.filter(isToolUIPart);
+  const toolParts = messageParts.filter(isToolPart);
 
   // Show only the last few parts to avoid too much output
   const maxVisible = 4;
@@ -193,10 +221,15 @@ export function TaskRenderer({ part, state }: ToolRendererProps<"tool-task">) {
             </box>
           )}
           {visibleParts.map((p, i) => {
-            if (isToolUIPart(p)) {
-              return <SubagentToolCall key={p.toolCallId} part={p} />;
+            if (isToolPart(p)) {
+              return (
+                <SubagentToolCall
+                  key={"toolCallId" in p ? p.toolCallId : i}
+                  part={p}
+                />
+              );
             }
-            if (isTextUIPart(p)) {
+            if (isTextPart(p)) {
               // Show truncated text, dimmed
               const text = p.text.trim();
               if (!text) return null;

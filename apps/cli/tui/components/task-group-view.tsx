@@ -1,15 +1,19 @@
-import type { SubagentUIMessage, TaskToolUIPart } from "@open-harness/agent";
+import type {
+  TaskToolStreamOutput,
+  TaskToolUIPart,
+  ReconstructedSubagentMessage,
+  ReconstructedPart,
+} from "@open-harness/agent";
+import { reconstructSubagentMessage } from "@open-harness/agent";
 import { formatTokens } from "@open-harness/shared";
 import { TextAttributes } from "@opentui/core";
 import { useTerminalDimensions } from "@opentui/react";
-import { getToolName, isToolUIPart } from "ai";
-import React, { useEffect, useRef, useState } from "react";
+// ai SDK imports removed — we use ReconstructedPart type guards instead
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useChatContext } from "../chat-context";
 import { PRIMARY_COLOR } from "../lib/colors";
 import { truncateText } from "../lib/truncate";
 import { toRelativePath } from "./tool-renderers/shared";
-
-type SubagentMessagePart = SubagentUIMessage["parts"][number];
 
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
@@ -100,32 +104,42 @@ function getTaskStatus(part: TaskToolUIPart, isStreaming: boolean): TaskStatus {
   return "pending";
 }
 
-function countTaskTools(part: TaskToolUIPart): number {
-  if (part.state !== "output-available") return 0;
-  const message = part.output;
+function getStreamOutput(
+  part: TaskToolUIPart,
+): TaskToolStreamOutput | undefined {
+  if (part.state !== "output-available" || !part.output) return undefined;
+  return part.output as TaskToolStreamOutput;
+}
+
+function countTaskTools(
+  message: ReconstructedSubagentMessage | undefined,
+): number {
   if (!message?.parts) return 0;
-  return message.parts.filter(isToolUIPart).length;
+  return message.parts.filter((p) => p.type.startsWith("tool-")).length;
 }
 
-function getTaskTokens(part: TaskToolUIPart): number | null {
-  if (part.state !== "output-available") return null;
-  const message = part.output;
-  return message?.metadata?.lastStepUsage?.inputTokens ?? null;
+function getTaskTokens(
+  message: ReconstructedSubagentMessage | undefined,
+): number | null {
+  if (!message) return null;
+  return message.metadata?.lastStepUsage?.inputTokens ?? null;
 }
 
-function getToolSummary(part: SubagentMessagePart, cwd: string): string {
+function getToolSummary(part: ReconstructedPart, cwd: string): string {
+  if (!part.type.startsWith("tool-")) return "";
+  const input = (part as { input?: Record<string, unknown> }).input;
   switch (part.type) {
     case "tool-read":
     case "tool-write":
     case "tool-edit":
-      return part.input?.filePath
-        ? toRelativePath(part.input.filePath, cwd)
+      return input?.filePath
+        ? toRelativePath(String(input.filePath), cwd)
         : "";
     case "tool-grep":
     case "tool-glob":
-      return part.input?.pattern ? `"${part.input.pattern}"` : "";
+      return input?.pattern ? `"${input.pattern}"` : "";
     case "tool-bash": {
-      return part.input?.command ?? "";
+      return input?.command ? String(input.command) : "";
     }
     default:
       return "";
@@ -133,24 +147,22 @@ function getToolSummary(part: SubagentMessagePart, cwd: string): string {
 }
 
 function getLastToolInfo(
-  part: TaskToolUIPart,
+  message: ReconstructedSubagentMessage | undefined,
   cwd: string,
 ): { name: string; summary: string } | null {
-  if (part.state !== "output-available") return null;
-  const message = part.output;
   if (!message?.parts) return null;
 
   const toolParts = message.parts.filter(
     (toolPart) =>
-      isToolUIPart(toolPart) && toolPart.state !== "input-streaming",
+      toolPart.type.startsWith("tool-") &&
+      (toolPart as { state?: string }).state !== "input-streaming",
   );
   if (toolParts.length === 0) return null;
 
   const lastTool = toolParts[toolParts.length - 1];
-  // Double-check needed for TypeScript narrowing with union types
-  if (!lastTool || !isToolUIPart(lastTool)) return null;
+  if (!lastTool || !lastTool.type.startsWith("tool-")) return null;
 
-  const toolName = getToolName(lastTool);
+  const toolName = lastTool.type.replace("tool-", "");
   const summary = getToolSummary(lastTool, cwd);
 
   const displayName = toolName.charAt(0).toUpperCase() + toolName.slice(1);
@@ -187,14 +199,23 @@ function TaskItem({
   isLast: boolean;
   isStreaming: boolean;
 }) {
+  const streamOutput = getStreamOutput(part);
+  const message = useMemo(
+    () =>
+      streamOutput?.buffer
+        ? reconstructSubagentMessage(streamOutput.buffer)
+        : undefined,
+    [streamOutput?.buffer],
+  );
+
   const status = getTaskStatus(part, isStreaming);
   const isRunning = status === "running" || status === "pending";
   const elapsedSeconds = useTaskTiming(isRunning);
-  const toolCount = countTaskTools(part);
-  const tokenCount = getTaskTokens(part);
+  const toolCount = countTaskTools(message);
+  const tokenCount = getTaskTokens(message);
   const { state: chatState } = useChatContext();
   const cwd = chatState.workingDirectory ?? process.cwd();
-  const lastTool = getLastToolInfo(part, cwd);
+  const lastTool = getLastToolInfo(message, cwd);
   const { width } = useTerminalDimensions();
   const terminalWidth = width ?? 80;
 

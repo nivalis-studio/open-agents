@@ -1,9 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Loader2 } from "lucide-react";
-import { isToolUIPart, getToolName } from "ai";
-import type { TaskToolUIPart } from "@open-harness/agent";
+import type {
+  TaskToolUIPart,
+  TaskToolStreamOutput,
+  ReconstructedSubagentMessage,
+} from "@open-harness/agent";
+import { reconstructSubagentMessage } from "@open-harness/agent";
 import { formatTokens, toRelativePath } from "@open-harness/shared";
 import { cn } from "@/lib/utils";
 import { DEFAULT_WORKING_DIRECTORY } from "@/lib/sandbox/config";
@@ -34,40 +38,47 @@ function getTaskStatus(part: TaskToolUIPart, isStreaming: boolean): TaskStatus {
   return "pending";
 }
 
-function countTaskTools(part: TaskToolUIPart): number {
-  if (part.state !== "output-available") return 0;
-  const message = part.output;
-  if (!message?.parts) return 0;
-  return message.parts.filter(isToolUIPart).length;
+function getStreamOutput(
+  part: TaskToolUIPart,
+): TaskToolStreamOutput | undefined {
+  if (part.state !== "output-available" || !part.output) return undefined;
+  return part.output as TaskToolStreamOutput;
 }
 
-function getTaskTokens(part: TaskToolUIPart): number | null {
+function countTaskTools(
+  message: ReconstructedSubagentMessage | undefined,
+): number {
+  if (!message?.parts) return 0;
+  return message.parts.filter((p) => p.type.startsWith("tool-")).length;
+}
+
+function getTaskTokens(
+  part: TaskToolUIPart,
+  message: ReconstructedSubagentMessage | undefined,
+): number | null {
   if (part.state !== "output-available") return null;
-  const message = part.output;
+  const metadata = message?.metadata;
   // Use totalMessageUsage when complete, lastStepUsage when still running
   const isComplete = !part.preliminary;
   if (isComplete) {
-    return message?.metadata?.totalMessageUsage?.inputTokens ?? null;
+    return metadata?.totalMessageUsage?.inputTokens ?? null;
   }
-  return message?.metadata?.lastStepUsage?.inputTokens ?? null;
+  return metadata?.lastStepUsage?.inputTokens ?? null;
 }
 
 function getLastToolInfo(
-  part: TaskToolUIPart,
+  message: ReconstructedSubagentMessage | undefined,
 ): { name: string; summary: string } | null {
-  if (part.state !== "output-available") return null;
-  const message = part.output;
   if (!message?.parts) return null;
 
-  const toolParts = message.parts.filter(isToolUIPart);
+  const toolParts = message.parts.filter((p) => p.type.startsWith("tool-"));
   if (toolParts.length === 0) return null;
 
   const lastTool = toolParts[toolParts.length - 1];
-  // Double-check needed for TypeScript narrowing with union types
-  if (!lastTool || !isToolUIPart(lastTool)) return null;
+  if (!lastTool || !lastTool.type.startsWith("tool-")) return null;
 
-  const toolName = getToolName(lastTool);
-  const input = lastTool.input as Record<string, unknown> | undefined;
+  const toolName = lastTool.type.replace("tool-", "");
+  const input = (lastTool as { input?: Record<string, unknown> }).input;
 
   let summary = "";
   if (input?.filePath) {
@@ -159,12 +170,21 @@ function TaskItem({
   onApprove?: (id: string) => void;
   onDeny?: (id: string, reason?: string) => void;
 }) {
+  const streamOutput = getStreamOutput(part);
+  const message = useMemo(
+    () =>
+      streamOutput?.buffer
+        ? reconstructSubagentMessage(streamOutput.buffer)
+        : undefined,
+    [streamOutput?.buffer],
+  );
+
   const status = getTaskStatus(part, isStreaming);
   const isRunning = status === "running" || status === "pending";
   const elapsedSeconds = useTaskTiming(isRunning);
-  const toolCount = countTaskTools(part);
-  const tokenCount = getTaskTokens(part);
-  const lastTool = getLastToolInfo(part);
+  const toolCount = countTaskTools(message);
+  const tokenCount = getTaskTokens(part, message);
+  const lastTool = getLastToolInfo(message);
 
   const desc = part.input?.task ?? "Task";
   const subagentType = part.input?.subagentType;

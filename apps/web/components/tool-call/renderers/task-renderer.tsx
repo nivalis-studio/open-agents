@@ -1,31 +1,47 @@
 "use client";
 
-import type { SubagentUIMessage } from "@open-harness/agent";
+import type {
+  TaskToolStreamOutput,
+  ReconstructedSubagentMessage,
+  ReconstructedPart,
+} from "@open-harness/agent";
+import { reconstructSubagentMessage } from "@open-harness/agent";
 import { formatTokens, toRelativePath } from "@open-harness/shared";
-import { getToolName, isTextUIPart, isToolUIPart } from "ai";
 import { Loader2 } from "lucide-react";
 import type React from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { ToolRendererProps } from "@/app/lib/render-tool";
 import { DEFAULT_WORKING_DIRECTORY } from "@/lib/sandbox/config";
 import { cn } from "@/lib/utils";
 import { ApprovalButtons } from "../approval-buttons";
 
-type SubagentMessagePart = SubagentUIMessage["parts"][number];
+function isToolPart(
+  part: ReconstructedPart,
+): part is ReconstructedPart & { type: string; toolCallId: string } {
+  return part.type.startsWith("tool-");
+}
 
-function getToolSummary(part: SubagentMessagePart): string {
+function isTextPart(
+  part: ReconstructedPart,
+): part is ReconstructedPart & { type: "text"; text: string } {
+  return part.type === "text";
+}
+
+function getToolSummary(part: ReconstructedPart): string {
+  if (!isToolPart(part)) return "";
+  const input = (part as { input?: Record<string, unknown> }).input;
   switch (part.type) {
     case "tool-read":
     case "tool-write":
     case "tool-edit": {
-      const fp = part.input?.filePath ?? "";
-      return fp ? toRelativePath(fp, DEFAULT_WORKING_DIRECTORY) : "";
+      const fp = input?.filePath ?? "";
+      return fp ? toRelativePath(String(fp), DEFAULT_WORKING_DIRECTORY) : "";
     }
     case "tool-grep":
     case "tool-glob":
-      return part.input?.pattern ? `"${part.input.pattern}"` : "";
+      return input?.pattern ? `"${input.pattern}"` : "";
     case "tool-bash":
-      return part.input?.command ?? "";
+      return input?.command ? String(input.command) : "";
     default:
       return "";
   }
@@ -35,15 +51,20 @@ function SubagentToolCall({
   part,
   expanded = false,
 }: {
-  part: SubagentMessagePart;
+  part: ReconstructedPart;
   expanded?: boolean;
 }) {
-  if (!isToolUIPart(part)) return null;
+  if (!isToolPart(part)) return null;
 
-  const toolName = getToolName(part);
+  const toolName = part.type.replace("tool-", "");
+  const toolPart = part as {
+    state: string;
+    input?: Record<string, unknown>;
+  };
   const isRunning =
-    part.state === "input-streaming" || part.state === "input-available";
-  const hasError = part.state === "output-error";
+    toolPart.state === "input-streaming" ||
+    toolPart.state === "input-available";
+  const hasError = toolPart.state === "output-error";
 
   const summary = getToolSummary(part);
 
@@ -93,7 +114,7 @@ function SubagentToolCall({
       {/* Show full input in expanded mode */}
       {expanded && (
         <pre className="ml-4 mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded bg-muted p-2 font-mono text-xs text-foreground">
-          {JSON.stringify(part.input, null, 2)}
+          {JSON.stringify(toolPart.input, null, 2)}
         </pre>
       )}
     </div>
@@ -117,14 +138,25 @@ export function TaskRenderer({
 
   const hasOutput = part.state === "output-available";
   const isPreliminary = hasOutput && part.preliminary === true;
-  const message = hasOutput ? part.output : undefined;
+  const streamOutput = hasOutput
+    ? (part.output as TaskToolStreamOutput | undefined)
+    : undefined;
+
+  // Reconstruct the SubagentUIMessage from the SSE buffer
+  const message: ReconstructedSubagentMessage | undefined = useMemo(
+    () =>
+      streamOutput?.buffer
+        ? reconstructSubagentMessage(streamOutput.buffer)
+        : undefined,
+    [streamOutput?.buffer],
+  );
 
   const messageParts = message?.parts ?? [];
   const relevantParts = messageParts.filter(
-    (p) => isToolUIPart(p) || isTextUIPart(p),
+    (p) => isToolPart(p) || isTextPart(p),
   );
-  const toolParts = messageParts.filter(isToolUIPart);
-  const textParts = messageParts.filter(isTextUIPart);
+  const toolParts = messageParts.filter(isToolPart);
+  const textParts = messageParts.filter(isTextPart);
 
   const maxVisible = 4;
   const hiddenCount = Math.max(0, relevantParts.length - maxVisible);
@@ -255,10 +287,15 @@ export function TaskRenderer({
             </div>
           )}
           {visibleParts.map((p, i) => {
-            if (isToolUIPart(p)) {
-              return <SubagentToolCall key={p.toolCallId ?? i} part={p} />;
+            if (isToolPart(p)) {
+              return (
+                <SubagentToolCall
+                  key={"toolCallId" in p ? p.toolCallId : i}
+                  part={p}
+                />
+              );
             }
-            if (isTextUIPart(p)) {
+            if (isTextPart(p)) {
               const text = p.text?.trim() ?? "";
               if (!text) return null;
               const truncated =
@@ -310,16 +347,16 @@ export function TaskRenderer({
               </div>
               <div className="max-h-96 space-y-1 overflow-auto">
                 {relevantParts.map((p, i) => {
-                  if (isToolUIPart(p)) {
+                  if (isToolPart(p)) {
                     return (
                       <SubagentToolCall
-                        key={p.toolCallId ?? i}
+                        key={"toolCallId" in p ? p.toolCallId : i}
                         part={p}
                         expanded
                       />
                     );
                   }
-                  if (isTextUIPart(p)) {
+                  if (isTextPart(p)) {
                     const text = p.text?.trim() ?? "";
                     if (!text) return null;
                     return (
