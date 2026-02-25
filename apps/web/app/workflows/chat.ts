@@ -29,28 +29,13 @@ export async function runDurableChatWorkflow(
   "use workflow";
 
   const writable = getWritable<UIMessageChunk>();
-  let modelMessages = messages;
-  let responseMessage: UIMessage | null = null;
-  let totalMessageUsage: LanguageModelUsage | undefined;
-
-  const maxIterations = 10;
-
-  for (let i = 0; i < maxIterations; i += 1) {
-    const result = await runChatStep(modelMessages, writable, options);
-    modelMessages = [...modelMessages, ...result.responseMessages];
-    responseMessage = result.responseMessage;
-    totalMessageUsage = result.totalMessageUsage;
-
-    if (!result.shouldContinue) {
-      break;
-    }
-  }
+  const result = await runChatStep(messages, writable, options);
 
   await closeStream(writable);
 
   return {
-    responseMessage,
-    totalMessageUsage,
+    responseMessage: result.responseMessage,
+    totalMessageUsage: result.totalMessageUsage,
   };
 }
 
@@ -113,27 +98,14 @@ async function runChatStep(
     writer.releaseLock();
   }
 
-  const response = await result.response;
-  const finishReason =
-    streamFinishReason ?? ((await result.finishReason) as FinishReason);
+  if (!streamFinishReason) {
+    await result.finishReason;
+  }
 
   return {
     responseMessage,
-    responseMessages: response.messages,
-    shouldContinue:
-      finishReason === "tool-calls" && hasToolCallInMessages(response.messages),
     totalMessageUsage,
   };
-}
-
-function hasToolCallInMessages(messages: ModelMessage[]): boolean {
-  return messages.some((message) => {
-    if (message.role !== "assistant" || !Array.isArray(message.content)) {
-      return false;
-    }
-
-    return message.content.some((part) => part.type === "tool-call");
-  });
 }
 
 async function closeStream(writable: WritableStream<UIMessageChunk>) {
