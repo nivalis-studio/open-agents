@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import {
   ArrowLeft,
   Check,
@@ -43,6 +44,7 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   const { isMobile, setOpenMobile } = useSidebar();
   const router = useRouter();
+  const shouldReduceMotion = useReducedMotion();
 
   // Wrap navigation callbacks so the mobile sidebar always closes,
   // regardless of which UI element triggers the action.
@@ -113,7 +115,12 @@ export function ChatSidebar({
 
   return (
     <>
-      <div className="border-b border-border p-3">
+      <motion.div
+        className="border-b border-border p-3"
+        initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+        animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: "easeOut" }}
+      >
         <button
           type="button"
           onClick={() => router.push("/")}
@@ -178,37 +185,67 @@ export function ChatSidebar({
           <Plus className="mr-2 h-4 w-4" />
           New chat
         </Button>
-      </div>
+      </motion.div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         <div className="space-y-1">
-          {chatsErrorMessage ? (
-            <div className="rounded-md border border-destructive/40 bg-destructive/10 p-2">
-              <p className="text-xs leading-snug text-destructive">
-                {chatsErrorMessage}
-              </p>
-              <button
-                type="button"
-                onClick={onRetryChats}
-                disabled={chatsLoading}
-                className="mt-2 text-xs font-medium text-destructive underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+          <AnimatePresence>
+            {chatsErrorMessage ? (
+              <motion.div
+                className="rounded-md border border-destructive/40 bg-destructive/10 p-2"
+                initial={shouldReduceMotion ? undefined : { opacity: 0, y: -4 }}
+                animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+                exit={shouldReduceMotion ? undefined : { opacity: 0, y: -4 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
               >
-                Retry
-              </button>
-            </div>
-          ) : null}
+                <p className="text-xs leading-snug text-destructive">
+                  {chatsErrorMessage}
+                </p>
+                <button
+                  type="button"
+                  onClick={onRetryChats}
+                  disabled={chatsLoading}
+                  className="mt-2 text-xs font-medium text-destructive underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Retry
+                </button>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
 
-          {!chatsLoading && chats.length === 0 && !chatsErrorMessage ? (
-            <p className="px-2 py-1 text-xs text-muted-foreground">
-              No chats yet.
-            </p>
-          ) : null}
+          <AnimatePresence>
+            {!chatsLoading && chats.length === 0 && !chatsErrorMessage ? (
+              <motion.p
+                className="px-2 py-1 text-xs text-muted-foreground"
+                initial={shouldReduceMotion ? undefined : { opacity: 0, y: 4 }}
+                animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+                exit={shouldReduceMotion ? undefined : { opacity: 0, y: 4 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+              >
+                No chats yet.
+              </motion.p>
+            ) : null}
+          </AnimatePresence>
 
-          {chats.map((c) => (
-            <div
+          {chats.map((c, index) => (
+            <motion.div
               key={c.id}
               className={`group relative flex items-center rounded-md ${
                 c.id === activeChatId ? "bg-secondary" : "hover:bg-muted"
               }`}
+              initial={
+                shouldReduceMotion
+                  ? undefined
+                  : { opacity: 0, x: -10, scale: 0.98 }
+              }
+              animate={
+                shouldReduceMotion ? undefined : { opacity: 1, x: 0, scale: 1 }
+              }
+              transition={{
+                duration: 0.22,
+                delay: Math.min(index * 0.03, 0.18),
+                ease: "easeOut",
+              }}
+              whileHover={shouldReduceMotion ? undefined : { x: 1 }}
             >
               {editingChatId === c.id ? (
                 <input
@@ -284,7 +321,7 @@ export function ChatSidebar({
                   </button>
                 </div>
               )}
-            </div>
+            </motion.div>
           ))}
         </div>
       </div>

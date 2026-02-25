@@ -23,6 +23,7 @@ import {
   Square,
   X,
 } from "lucide-react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import {
@@ -649,6 +650,7 @@ export function SessionChatContent() {
   const [cursorPosition, setCursorPosition] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const hasMounted = useHasMounted();
+  const shouldReduceMotion = useReducedMotion();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isMountedRef = useRef(true);
 
@@ -1905,7 +1907,12 @@ export function SessionChatContent() {
   return (
     <>
       {/* Header */}
-      <header className="border-b border-border px-3 py-2 md:px-4 md:py-3">
+      <motion.header
+        className="border-b border-border px-3 py-2 md:px-4 md:py-3"
+        initial={shouldReduceMotion ? undefined : { opacity: 0, y: -8 }}
+        animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.22, ease: "easeOut" }}
+      >
         <div className="flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2 md:gap-4">
             <SidebarTrigger className="shrink-0 sidebar:hidden" />
@@ -2149,26 +2156,39 @@ export function SessionChatContent() {
             )}
           </div>
         </div>
-      </header>
+      </motion.header>
 
       {/* Transient error banner (e.g. iOS "Load failed" after sleep) */}
-      {error && (
-        <div className="flex items-center justify-between gap-3 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-          <p className="min-w-0 truncate">{error.message}</p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
-            onClick={() => retryChatStream()}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            className="flex items-center justify-between gap-3 border-b border-destructive/20 bg-destructive/10 px-4 py-2 text-sm text-destructive"
+            initial={shouldReduceMotion ? undefined : { opacity: 0, y: -6 }}
+            animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? undefined : { opacity: 0, y: -6 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
           >
-            <RefreshCw className="h-3 w-3" />
-            Retry
-          </Button>
-        </div>
-      )}
+            <p className="min-w-0 truncate">{error.message}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-1.5 border-destructive/30 text-destructive hover:bg-destructive/10"
+              onClick={() => retryChatStream()}
+            >
+              <RefreshCw className="h-3 w-3" />
+              Retry
+            </Button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Messages */}
-      <div className="relative flex-1 overflow-hidden">
+      <motion.div
+        className="relative flex-1 overflow-hidden"
+        initial={shouldReduceMotion ? undefined : { opacity: 0 }}
+        animate={shouldReduceMotion ? undefined : { opacity: 1 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
         <div ref={containerRef} className="h-full overflow-y-auto">
           <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
             <div className="space-y-6">
@@ -2317,42 +2337,74 @@ export function SessionChatContent() {
             </div>
           </div>
         </div>
-        {!isAtBottom && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-secondary text-secondary-foreground hover:bg-accent"
-            onClick={scrollToBottom}
-          >
-            <ArrowDown className="h-4 w-4" />
-          </Button>
-        )}
-      </div>
+        <AnimatePresence>
+          {!isAtBottom && (
+            <motion.div
+              initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+              animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+              exit={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="absolute bottom-4 left-1/2 -translate-x-1/2"
+            >
+              <Button
+                variant="ghost"
+                size="icon"
+                className="rounded-full bg-secondary text-secondary-foreground hover:bg-accent"
+                onClick={scrollToBottom}
+              >
+                <ArrowDown className="h-4 w-4" />
+              </Button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
 
       {/* Question Panel */}
-      {hasPendingQuestion && pendingQuestionPart && (
-        <QuestionPanel
-          questions={pendingQuestionPart.input.questions}
-          onSubmit={handleQuestionSubmit}
-          onCancel={handleQuestionCancel}
-        />
-      )}
+      <AnimatePresence>
+        {hasPendingQuestion && pendingQuestionPart && (
+          <motion.div
+            initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+            animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+            exit={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
+            <QuestionPanel
+              questions={pendingQuestionPart.input.questions}
+              onSubmit={handleQuestionSubmit}
+              onCancel={handleQuestionCancel}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Input */}
-      <div className="p-4 pb-2 sm:pb-8">
+      <motion.div
+        className="p-4 pb-2 sm:pb-8"
+        initial={shouldReduceMotion ? undefined : { opacity: 0, y: 10 }}
+        animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+        transition={{ duration: 0.24, ease: "easeOut", delay: 0.04 }}
+      >
         <div className="mx-auto max-w-4xl space-y-2">
-          {restoreError && (
-            <div className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              <span>{restoreError}</span>
-              <button
-                type="button"
-                onClick={() => setRestoreError(null)}
-                className="ml-2 rounded p-0.5 hover:bg-destructive/20"
+          <AnimatePresence>
+            {restoreError && (
+              <motion.div
+                className="flex items-center justify-between rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+                initial={shouldReduceMotion ? undefined : { opacity: 0, y: -6 }}
+                animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+                exit={shouldReduceMotion ? undefined : { opacity: 0, y: -6 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
               >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
+                <span>{restoreError}</span>
+                <button
+                  type="button"
+                  onClick={() => setRestoreError(null)}
+                  className="ml-2 rounded p-0.5 hover:bg-destructive/20"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
           {/* Hidden file input */}
           <input
             ref={fileInputRef}
@@ -2657,12 +2709,26 @@ export function SessionChatContent() {
             </form>
 
             {/* Recording error message */}
-            {recordingError && (
-              <p className="mt-2 text-sm text-destructive">{recordingError}</p>
-            )}
+            <AnimatePresence>
+              {recordingError && (
+                <motion.p
+                  className="mt-2 text-sm text-destructive"
+                  initial={
+                    shouldReduceMotion ? undefined : { opacity: 0, y: 4 }
+                  }
+                  animate={
+                    shouldReduceMotion ? undefined : { opacity: 1, y: 0 }
+                  }
+                  exit={shouldReduceMotion ? undefined : { opacity: 0, y: 4 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
+                >
+                  {recordingError}
+                </motion.p>
+              )}
+            </AnimatePresence>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Create PR Dialog */}
       {session && (

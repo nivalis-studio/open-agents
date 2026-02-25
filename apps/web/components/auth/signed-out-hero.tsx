@@ -1,5 +1,6 @@
 "use client";
 
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Check, Copy } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SignInButton } from "@/components/auth/sign-in-button";
@@ -24,6 +25,7 @@ function GitHubIcon({ className }: { className?: string }) {
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldReduceMotion = useReducedMotion();
 
   useEffect(() => {
     return () => {
@@ -54,29 +56,145 @@ function CopyButton({ text }: { text: string }) {
   }, [text]);
 
   return (
-    <button
+    <motion.button
       type="button"
       onClick={handleCopy}
       className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-white/40 transition-colors hover:bg-white/[0.05] hover:text-white/60"
       aria-label="Copy to clipboard"
+      whileHover={shouldReduceMotion ? undefined : { scale: 1.04 }}
+      whileTap={shouldReduceMotion ? undefined : { scale: 0.95 }}
+      transition={{ duration: 0.16, ease: "easeOut" }}
     >
-      {copied ? (
-        <Check className="h-4 w-4 text-emerald-400" />
-      ) : (
-        <Copy className="h-4 w-4" />
-      )}
-    </button>
+      <AnimatePresence mode="wait" initial={false}>
+        {copied ? (
+          <motion.span
+            key="copied"
+            initial={
+              shouldReduceMotion ? undefined : { opacity: 0, scale: 0.7, y: 2 }
+            }
+            animate={
+              shouldReduceMotion ? undefined : { opacity: 1, scale: 1, y: 0 }
+            }
+            exit={
+              shouldReduceMotion ? undefined : { opacity: 0, scale: 0.7, y: -2 }
+            }
+            transition={{ duration: 0.16, ease: "easeOut" }}
+          >
+            <Check className="h-4 w-4 text-emerald-400" />
+          </motion.span>
+        ) : (
+          <motion.span
+            key="copy"
+            initial={
+              shouldReduceMotion ? undefined : { opacity: 0, scale: 0.7, y: 2 }
+            }
+            animate={
+              shouldReduceMotion ? undefined : { opacity: 1, scale: 1, y: 0 }
+            }
+            exit={
+              shouldReduceMotion ? undefined : { opacity: 0, scale: 0.7, y: -2 }
+            }
+            transition={{ duration: 0.16, ease: "easeOut" }}
+          >
+            <Copy className="h-4 w-4" />
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </motion.button>
   );
 }
 
 export function SignedOutHero() {
+  const shouldReduceMotion = useReducedMotion();
+
+  const reveal = (delay: number, y = 16) => {
+    if (shouldReduceMotion) {
+      return {};
+    }
+
+    return {
+      initial: { opacity: 0, y },
+      animate: { opacity: 1, y: 0 },
+      transition: {
+        duration: 0.55,
+        delay,
+        ease: [0.16, 1, 0.3, 1] as [number, number, number, number],
+      },
+    };
+  };
+
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden bg-[#0a0a0b]">
       {/* Ambient glow effects */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-0 h-[600px] w-[1000px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/[0.07] blur-[150px]" />
-        <div className="absolute bottom-0 right-0 h-[400px] w-[600px] translate-x-1/4 translate-y-1/4 rounded-full bg-blue-500/[0.05] blur-[120px]" />
-        <div className="absolute bottom-1/3 left-0 h-[300px] w-[400px] -translate-x-1/2 rounded-full bg-violet-500/[0.04] blur-[100px]" />
+        <motion.div
+          className="absolute left-1/2 top-0 h-[600px] w-[1000px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-500/[0.07] blur-[150px]"
+          animate={
+            shouldReduceMotion
+              ? undefined
+              : {
+                  x: [-20, 12, -20],
+                  y: [-10, 16, -10],
+                  scale: [1, 1.06, 1],
+                  opacity: [0.05, 0.09, 0.05],
+                }
+          }
+          transition={
+            shouldReduceMotion
+              ? undefined
+              : {
+                  duration: 20,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "easeInOut",
+                }
+          }
+        />
+        <motion.div
+          className="absolute bottom-0 right-0 h-[400px] w-[600px] translate-x-1/4 translate-y-1/4 rounded-full bg-blue-500/[0.05] blur-[120px]"
+          animate={
+            shouldReduceMotion
+              ? undefined
+              : {
+                  x: [16, -12, 16],
+                  y: [6, -10, 6],
+                  scale: [1, 1.08, 1],
+                  opacity: [0.04, 0.08, 0.04],
+                }
+          }
+          transition={
+            shouldReduceMotion
+              ? undefined
+              : {
+                  duration: 24,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "easeInOut",
+                  delay: 2,
+                }
+          }
+        />
+        <motion.div
+          className="absolute bottom-1/3 left-0 h-[300px] w-[400px] -translate-x-1/2 rounded-full bg-violet-500/[0.04] blur-[100px]"
+          animate={
+            shouldReduceMotion
+              ? undefined
+              : {
+                  x: [-10, 14, -10],
+                  y: [10, -14, 10],
+                  scale: [1, 1.05, 1],
+                  opacity: [0.03, 0.06, 0.03],
+                }
+          }
+          transition={
+            shouldReduceMotion
+              ? undefined
+              : {
+                  duration: 22,
+                  repeat: Number.POSITIVE_INFINITY,
+                  ease: "easeInOut",
+                  delay: 1,
+                }
+          }
+        />
       </div>
 
       {/* Dot grid pattern */}
@@ -99,9 +217,18 @@ export function SignedOutHero() {
       />
 
       {/* Header */}
-      <header className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-8">
+      <motion.header
+        className="relative z-10 flex items-center justify-between px-6 py-5 sm:px-8"
+        {...reveal(0.08, 12)}
+      >
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03]">
+          <motion.div
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.03]"
+            whileHover={
+              shouldReduceMotion ? undefined : { rotate: -4, scale: 1.04 }
+            }
+            transition={{ duration: 0.2, ease: "easeOut" }}
+          >
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -112,31 +239,61 @@ export function SignedOutHero() {
               <polyline points="4,17 10,11 4,5" />
               <line x1="12" y1="19" x2="20" y2="19" />
             </svg>
-          </div>
+          </motion.div>
           <span className="text-lg font-medium tracking-tight text-white">
             Open Harness
           </span>
         </div>
         <div className="flex items-center gap-3">
-          <a
+          <motion.a
             href="https://github.com/vercel-labs/open-harness"
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-1.5 text-sm text-white/50 transition-colors hover:border-white/[0.12] hover:bg-white/[0.04] hover:text-white/70"
+            whileHover={shouldReduceMotion ? undefined : { y: -1 }}
+            transition={{ duration: 0.16, ease: "easeOut" }}
           >
             <GitHubIcon className="h-4 w-4" />
             <span className="hidden sm:inline">Open Source</span>
-          </a>
-          <SignInButton className="h-9 border-0 bg-white px-4 text-sm font-medium text-black transition-colors hover:bg-white/90" />
+          </motion.a>
+          <motion.div
+            whileHover={shouldReduceMotion ? undefined : { y: -1 }}
+            whileTap={shouldReduceMotion ? undefined : { y: 0, scale: 0.98 }}
+          >
+            <SignInButton className="h-9 border-0 bg-white px-4 text-sm font-medium text-black transition-colors hover:bg-white/90" />
+          </motion.div>
         </div>
-      </header>
+      </motion.header>
 
       {/* Main content */}
       <main className="relative z-10 flex flex-1 flex-col items-center justify-center px-6 pb-16">
         {/* Hero section */}
-        <div className="mb-12 max-w-2xl text-center">
+        <motion.div className="mb-12 max-w-2xl text-center" {...reveal(0.18)}>
           {/* Tech badge */}
-          <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.02] px-4 py-2 backdrop-blur">
+          <motion.div
+            className="mb-8 inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.02] px-4 py-2 backdrop-blur"
+            animate={
+              shouldReduceMotion
+                ? undefined
+                : {
+                    y: [0, -3, 0],
+                    boxShadow: [
+                      "0 0 0 rgba(16,185,129,0)",
+                      "0 0 24px rgba(16,185,129,0.12)",
+                      "0 0 0 rgba(16,185,129,0)",
+                    ],
+                  }
+            }
+            transition={
+              shouldReduceMotion
+                ? undefined
+                : {
+                    duration: 4,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                  }
+            }
+          >
             <div className="flex items-center gap-1">
               <div className="h-1.5 w-1.5 rounded-full bg-emerald-400/80" />
               <div className="h-1.5 w-1.5 rounded-full bg-emerald-400/60 animate-pulse" />
@@ -145,27 +302,78 @@ export function SignedOutHero() {
             <span className="text-xs text-white/40">
               Powered by AI SDK, Vercel AI Gateway, and Next.js
             </span>
-          </div>
+          </motion.div>
 
-          <h1 className="text-4xl font-semibold tracking-tight text-white sm:text-5xl">
+          <motion.h1
+            className="text-4xl font-semibold tracking-tight text-white sm:text-5xl"
+            {...reveal(0.24)}
+          >
             Ship code faster with
             <br />
             <span className="bg-gradient-to-r from-white via-white/90 to-white/60 bg-clip-text text-transparent">
               AI that runs anywhere
             </span>
-          </h1>
+          </motion.h1>
 
-          <p className="mx-auto mt-6 max-w-lg text-base leading-relaxed text-white/50">
+          <motion.p
+            className="mx-auto mt-6 max-w-lg text-base leading-relaxed text-white/50"
+            {...reveal(0.32)}
+          >
             A cloud platform and CLI that share the same AI workflows. Start in
             the browser, continue locally, or work entirely from your terminal.
-          </p>
-        </div>
+          </motion.p>
+        </motion.div>
 
         {/* Cards section */}
         <div className="w-full max-w-3xl">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <motion.div
+            className="grid gap-4 sm:grid-cols-2"
+            initial={shouldReduceMotion ? undefined : "hidden"}
+            animate={shouldReduceMotion ? undefined : "visible"}
+            variants={
+              shouldReduceMotion
+                ? undefined
+                : {
+                    hidden: { opacity: 1 },
+                    visible: {
+                      opacity: 1,
+                      transition: {
+                        delayChildren: 0.38,
+                        staggerChildren: 0.12,
+                      },
+                    },
+                  }
+            }
+          >
             {/* Web card - Terminal style */}
-            <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#111113]/80 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <motion.div
+              className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#111113]/80 shadow-2xl shadow-black/20 backdrop-blur-xl"
+              variants={
+                shouldReduceMotion
+                  ? undefined
+                  : {
+                      hidden: { opacity: 0, y: 20, scale: 0.98 },
+                      visible: {
+                        opacity: 1,
+                        y: 0,
+                        scale: 1,
+                        transition: {
+                          duration: 0.55,
+                          ease: [0.16, 1, 0.3, 1],
+                        },
+                      },
+                    }
+              }
+              whileHover={
+                shouldReduceMotion
+                  ? undefined
+                  : {
+                      y: -5,
+                      scale: 1.01,
+                    }
+              }
+              transition={{ duration: 0.22, ease: "easeOut" }}
+            >
               {/* Window chrome */}
               <div className="flex items-center gap-2 border-b border-white/[0.06] bg-white/[0.02] px-4 py-3">
                 <div className="flex items-center gap-1.5">
@@ -204,10 +412,37 @@ export function SignedOutHero() {
 
                 <SignInButton className="h-10 w-full border-0 bg-white text-sm font-medium text-black transition-all hover:bg-white/90" />
               </div>
-            </div>
+            </motion.div>
 
             {/* CLI card - Terminal style */}
-            <div className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#111113]/80 shadow-2xl shadow-black/20 backdrop-blur-xl">
+            <motion.div
+              className="overflow-hidden rounded-xl border border-white/[0.08] bg-[#111113]/80 shadow-2xl shadow-black/20 backdrop-blur-xl"
+              variants={
+                shouldReduceMotion
+                  ? undefined
+                  : {
+                      hidden: { opacity: 0, y: 20, scale: 0.98 },
+                      visible: {
+                        opacity: 1,
+                        y: 0,
+                        scale: 1,
+                        transition: {
+                          duration: 0.55,
+                          ease: [0.16, 1, 0.3, 1],
+                        },
+                      },
+                    }
+              }
+              whileHover={
+                shouldReduceMotion
+                  ? undefined
+                  : {
+                      y: -5,
+                      scale: 1.01,
+                    }
+              }
+              transition={{ duration: 0.22, ease: "easeOut" }}
+            >
               {/* Window chrome */}
               <div className="flex items-center gap-2 border-b border-white/[0.06] bg-white/[0.02] px-4 py-3">
                 <div className="flex items-center gap-1.5">
@@ -246,15 +481,26 @@ export function SignedOutHero() {
                 </p>
 
                 {/* Install command */}
-                <div className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.02] py-1 pl-4 pr-1 font-mono text-sm">
+                <motion.div
+                  className="flex items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.02] py-1 pl-4 pr-1 font-mono text-sm"
+                  whileHover={
+                    shouldReduceMotion
+                      ? undefined
+                      : {
+                          borderColor: "rgba(255,255,255,0.18)",
+                          backgroundColor: "rgba(255,255,255,0.045)",
+                        }
+                  }
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                >
                   <code className="flex-1 truncate text-white/60">
                     {installCommand}
                   </code>
                   <CopyButton text={installCommand} />
-                </div>
+                </motion.div>
               </div>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
         </div>
       </main>
     </div>

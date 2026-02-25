@@ -1,5 +1,6 @@
 "use client";
 
+import { motion, useReducedMotion } from "motion/react";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -34,6 +35,7 @@ export function SessionLayoutShell({
   const params = useParams<{ chatId?: string }>();
   const pathname = usePathname();
   const pathnameRef = useRef(pathname);
+  const shouldReduceMotion = useReducedMotion();
   const [sessionTitle, setSessionTitle] = useState(initialSession.title);
   const [optimisticActiveChatId, setOptimisticActiveChatId] = useState<
     string | null
@@ -189,11 +191,25 @@ export function SessionLayoutShell({
       >
         <Sidebar collapsible="offcanvas" className="border-r border-border">
           <SidebarContent className="bg-muted/20">
-            {sidebarContent}
+            <motion.div
+              initial={shouldReduceMotion ? undefined : { opacity: 0, x: -8 }}
+              animate={shouldReduceMotion ? undefined : { opacity: 1, x: 0 }}
+              transition={{ duration: 0.25, ease: "easeOut" }}
+            >
+              {sidebarContent}
+            </motion.div>
           </SidebarContent>
         </Sidebar>
-        <SidebarInset className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {children}
+        <SidebarInset className="flex min-w-0 flex-1 overflow-hidden">
+          <motion.div
+            key={activeChatId || "session-shell"}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+            initial={shouldReduceMotion ? undefined : { opacity: 0, y: 8 }}
+            animate={shouldReduceMotion ? undefined : { opacity: 1, y: 0 }}
+            transition={{ duration: 0.24, ease: "easeOut" }}
+          >
+            {children}
+          </motion.div>
         </SidebarInset>
       </SidebarProvider>
     </SessionLayoutContext.Provider>

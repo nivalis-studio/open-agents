@@ -46,6 +46,7 @@
     "ioredis": "^5.9.2",
     "jose": "^6.1.3",
     "lucide-react": "^0.562.0",
+    "motion": "^12.34.3",
     "nanoid": "^5.1.6",
     "next": "16.1.1",
     "postgres": "^3.4.8",
