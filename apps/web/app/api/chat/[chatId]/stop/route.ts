@@ -1,5 +1,9 @@
 import { getRun } from "workflow/api";
-import { getChatById, getSessionById } from "@/lib/db/sessions";
+import {
+  compareAndSetChatActiveStreamId,
+  getChatById,
+  getSessionById,
+} from "@/lib/db/sessions";
 import { getServerSession } from "@/lib/session/get-server-session";
 
 type RouteContext = {
@@ -34,6 +38,12 @@ export async function POST(_request: Request, context: RouteContext) {
     await getRun(runId).cancel();
   } catch (error) {
     console.error("Failed to cancel workflow run:", error);
+  }
+
+  try {
+    await compareAndSetChatActiveStreamId(chatId, runId, null);
+  } catch (error) {
+    console.error("Failed to clear active stream id after stop:", error);
   }
 
   return Response.json({ success: true });

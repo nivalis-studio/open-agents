@@ -314,12 +314,22 @@ export function SessionChatProvider({
   const stopChatStream = useCallback(() => {
     void chatInstance.stop();
     abortChatInstanceTransport(chatInfo.id);
+    setChatInfo((previous) => ({ ...previous, activeStreamId: null }));
 
     void fetch(`/api/chat/${encodeURIComponent(chatInfo.id)}/stop`, {
       method: "POST",
-    }).catch((error) => {
-      console.error("Failed to stop chat workflow run:", error);
-    });
+      keepalive: true,
+    })
+      .then((response) => {
+        if (!response.ok) {
+          console.error(
+            `Failed to stop chat workflow run: HTTP ${response.status}`,
+          );
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to stop chat workflow run:", error);
+      });
   }, [chatInfo.id, chatInstance]);
 
   const chat = useChat<WebAgentUIMessage>({
