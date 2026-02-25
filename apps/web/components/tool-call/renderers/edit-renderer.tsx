@@ -23,7 +23,8 @@ export function EditRenderer({
   const showStreamingPath =
     isStreamingInput &&
     part.input?.filePath !== undefined &&
-    (part.input?.oldString !== undefined || part.input?.newString !== undefined);
+    (part.input?.oldString !== undefined ||
+      part.input?.newString !== undefined);
   const rawFilePath =
     isInputReady || showStreamingPath ? (part.input?.filePath ?? "...") : "...";
   const filePath =
