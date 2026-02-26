@@ -19,6 +19,62 @@ interface HomePageProps {
   lastRepo: { owner: string; repo: string } | null;
 }
 
+interface StartSessionInBackgroundInput {
+  sessionId: string;
+  chatId: string;
+  cloneUrl?: string;
+  branch?: string;
+  isNewBranch: boolean;
+  sandboxType: SandboxType;
+  initialPrompt: string;
+}
+
+async function startSessionInBackground(input: StartSessionInBackgroundInput) {
+  const sandboxResponse = await fetch("/api/sandbox", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      repoUrl: input.cloneUrl,
+      branch: input.cloneUrl ? (input.branch ?? "main") : undefined,
+      isNewBranch: input.cloneUrl ? input.isNewBranch : false,
+      sessionId: input.sessionId,
+      sandboxType: input.sandboxType,
+    }),
+  });
+
+  if (!sandboxResponse.ok) {
+    const errorText = await sandboxResponse.text().catch(() => "");
+    throw new Error(
+      `Failed to create sandbox: ${sandboxResponse.status}${errorText ? ` - ${errorText}` : ""}`,
+    );
+  }
+
+  const chatResponse = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: input.sessionId,
+      chatId: input.chatId,
+      messages: [
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          parts: [{ type: "text", text: input.initialPrompt }],
+        },
+      ],
+    }),
+  });
+
+  if (!chatResponse.ok) {
+    const errorText = await chatResponse.text().catch(() => "");
+    throw new Error(
+      `Failed to start prompt: ${chatResponse.status}${errorText ? ` - ${errorText}` : ""}`,
+    );
+  }
+
+  void chatResponse.body?.cancel().catch(() => {});
+}
+
 export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
   const router = useRouter();
   const { loading: sessionLoading, isAuthenticated } = useSession();
@@ -39,9 +95,13 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
     cloneUrl?: string;
     isNewBranch: boolean;
     sandboxType: SandboxType;
+    initialPrompt?: string;
   }) => {
     setIsCreating(true);
     try {
+      const initialPrompt = input.initialPrompt?.trim();
+      const shouldKickoffInBackground = Boolean(initialPrompt);
+
       const { session: createdSession, chat } = await createSession({
         repoOwner: input.repoOwner,
         repoName: input.repoName,
@@ -50,6 +110,21 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
         isNewBranch: input.isNewBranch,
         sandboxType: input.sandboxType,
       });
+
+      if (shouldKickoffInBackground && initialPrompt) {
+        void startSessionInBackground({
+          sessionId: createdSession.id,
+          chatId: chat.id,
+          cloneUrl: createdSession.cloneUrl ?? undefined,
+          branch: createdSession.branch ?? undefined,
+          isNewBranch: createdSession.isNewBranch,
+          sandboxType: input.sandboxType,
+          initialPrompt,
+        }).catch((error) => {
+          console.error("Failed to start background prompt:", error);
+        });
+        return;
+      }
 
       router.push(`/sessions/${createdSession.id}/chats/${chat.id}`);
     } catch (error) {

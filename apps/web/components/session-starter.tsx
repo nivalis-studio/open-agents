@@ -23,6 +23,7 @@ interface SessionStarterProps {
     cloneUrl?: string;
     isNewBranch: boolean;
     sandboxType: SandboxType;
+    initialPrompt?: string;
   }) => void;
   isLoading?: boolean;
   lastRepo: { owner: string; repo: string } | null;
@@ -42,6 +43,7 @@ export function SessionStarter({
   const [selectedRepo, setSelectedRepo] = useState(() => lastRepo?.repo ?? "");
   const [selectedBranch, setSelectedBranch] = useState<string | null>(null);
   const [isNewBranch, setIsNewBranch] = useState(!!lastRepo);
+  const [initialPrompt, setInitialPrompt] = useState("");
 
   const { preferences } = useUserPreferences();
 
@@ -82,6 +84,8 @@ export function SessionStarter({
   const handleSubmit = () => {
     if (isSubmitDisabled) return;
 
+    const trimmedInitialPrompt = initialPrompt.trim();
+
     onSubmit({
       repoOwner: mode === "repo" ? selectedOwner || undefined : undefined,
       repoName: mode === "repo" ? selectedRepo || undefined : undefined,
@@ -92,11 +96,17 @@ export function SessionStarter({
           : undefined,
       isNewBranch: mode === "repo" ? isNewBranch : false,
       sandboxType,
+      initialPrompt:
+        trimmedInitialPrompt.length > 0 ? trimmedInitialPrompt : undefined,
     });
   };
 
-  const buttonLabel =
-    mode === "repo" && selectedOwner && selectedRepo
+  const hasInitialPrompt = initialPrompt.trim().length > 0;
+  const buttonLabel = hasInitialPrompt
+    ? mode === "repo" && selectedOwner && selectedRepo
+      ? `Start ${selectedOwner}/${selectedRepo} in background`
+      : "Start in background"
+    : mode === "repo" && selectedOwner && selectedRepo
       ? `Start with ${selectedOwner}/${selectedRepo}`
       : "Start session";
 
@@ -178,6 +188,27 @@ export function SessionStarter({
             Start with a blank sandbox -- no repository required.
           </p>
         )}
+
+        <div className="space-y-2">
+          <label
+            htmlFor="initial-prompt"
+            className="block text-xs font-medium text-neutral-400"
+          >
+            Initial prompt (optional)
+          </label>
+          <textarea
+            id="initial-prompt"
+            value={initialPrompt}
+            onChange={(e) => setInitialPrompt(e.currentTarget.value)}
+            placeholder="Describe what you want to ship, and we'll send it as the first message."
+            rows={3}
+            className="w-full resize-none rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-neutral-100 placeholder:text-neutral-500 focus:border-white/20 focus:outline-none"
+          />
+          <p className="text-xs text-neutral-500">
+            When provided, we'll start the sandbox and run this prompt in the
+            background.
+          </p>
+        </div>
 
         <button
           type="button"
