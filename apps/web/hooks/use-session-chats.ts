@@ -59,6 +59,15 @@ const sessionChatOverlays = new Map<
 >();
 const overlayCleanupTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+/**
+ * Tracks chatIds whose streaming overlay is actively managed by a mounted
+ * component (i.e., setChatStreaming(true) was called and the component hasn't
+ * unmounted or called setChatStreaming(false) yet).  The reconciliation skips
+ * the age-based timeout for these chats so that slow model starts (extended
+ * thinking, cold starts) don't prematurely clear the sidebar indicator.
+ */
+const activelyManagedStreaming = new Set<string>();
+
 function clearOverlayCleanup(sessionId: string): void {
   const existingTimer = overlayCleanupTimers.get(sessionId);
   if (!existingTimer) {
@@ -108,6 +117,16 @@ function overlaysEqual(
       right.streaming?.seenServerStreaming &&
     left?.streamingClearedAt === right.streamingClearedAt
   );
+}
+
+/**
+ * Release a chatId from the actively-managed streaming set.  Call this from
+ * cleanup effects when the component that called `setChatStreaming(true)`
+ * unmounts, so the reconciliation can apply its normal age-based timeout to
+ * orphaned overlays.
+ */
+export function releaseStreamingOverlay(chatId: string): void {
+  activelyManagedStreaming.delete(chatId);
 }
 
 export function useSessionChats(
@@ -305,10 +324,18 @@ export function useSessionChats(
             };
           }
         } else {
+          // Server says this chat is not streaming.  Clear the overlay if:
+          // (a) we previously saw the server confirm streaming (the turn
+          //     is genuinely over), or
+          // (b) the overlay has exceeded the grace period AND no mounted
+          //     component is actively managing it (covers aborts, fast
+          //     turns, and route switches without killing the indicator
+          //     during slow model starts / extended thinking).
           const ageMs = Date.now() - streaming.setAt;
+          const isOrphaned = !activelyManagedStreaming.has(chatId);
           if (
             streaming.seenServerStreaming ||
-            ageMs > STREAMING_RACE_GRACE_MS
+            (isOrphaned && ageMs > STREAMING_RACE_GRACE_MS)
           ) {
             if (nextOverlay === overlay) {
               nextOverlay = { ...overlay };
@@ -536,6 +563,7 @@ export function useSessionChats(
 
   const setChatStreaming = async (chatId: string, isStreaming: boolean) => {
     if (isStreaming) {
+      activelyManagedStreaming.add(chatId);
       updateOverlay(chatId, (overlay) => {
         const next = {
           ...overlay,
@@ -549,6 +577,7 @@ export function useSessionChats(
         return next;
       });
     } else {
+      activelyManagedStreaming.delete(chatId);
       updateOverlay(chatId, (overlay) => {
         const next = { ...overlay };
         delete next.streaming;

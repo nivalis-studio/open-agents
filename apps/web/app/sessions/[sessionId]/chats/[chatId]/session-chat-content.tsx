@@ -87,7 +87,7 @@ import { useAudioRecording } from "@/hooks/use-audio-recording";
 import { useFileSuggestions } from "@/hooks/use-file-suggestions";
 import { useImageAttachments } from "@/hooks/use-image-attachments";
 import { useScrollToBottom } from "@/hooks/use-scroll-to-bottom";
-import { useSessionChats } from "@/hooks/use-session-chats";
+import { releaseStreamingOverlay, useSessionChats } from "@/hooks/use-session-chats";
 import { useSlashCommands } from "@/hooks/use-slash-commands";
 import {
   isChatInFlight as isChatInFlightStatus,
@@ -809,6 +809,17 @@ export function SessionChatContent(_props: unknown) {
     clearChatTitle,
     refreshChats,
   } = useSessionChats(session.id);
+
+  // When this component unmounts (e.g. navigating to a different chat),
+  // release the chatId from the actively-managed set so the overlay
+  // reconciliation can apply its normal age-based timeout for orphaned
+  // overlays instead of keeping them alive indefinitely.
+  useEffect(() => {
+    const id = chatInfo.id;
+    return () => {
+      releaseStreamingOverlay(id);
+    };
+  }, [chatInfo.id]);
   const renderMessages = useMemo(
     () => (hasMounted ? messages : initialMessages),
     [hasMounted, messages, initialMessages],
