@@ -24,7 +24,9 @@ Commit the generated `.sql` file alongside the schema change. **Do not use `db:p
 
 Migrations run automatically during `bun run build` (via `lib/db/migrate.ts`), so every Vercel deploy — both preview and production — applies pending migrations to its own database.
 
-Preview deployments use a Neon branch database (configured via Vercel); production uses the main database.
+### Environment isolation
+
+Neon database branching is enabled in the Vercel project settings. Every preview deployment automatically gets its own isolated database branch forked from production. This means preview deployments never read or write production data. Production deployments use the main Neon database.
 
 ## Commands
 

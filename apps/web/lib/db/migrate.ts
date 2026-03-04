@@ -6,8 +6,8 @@ import postgres from "postgres";
 
 const url = process.env.POSTGRES_URL;
 if (!url) {
-	console.log("POSTGRES_URL not set — skipping migrations");
-	process.exit(0);
+  console.log("POSTGRES_URL not set — skipping migrations");
+  process.exit(0);
 }
 
 const client = postgres(url, { max: 1 });
@@ -20,60 +20,67 @@ const db = drizzle(client);
  * missing entries so `migrate()` won't try to replay already-applied DDL.
  */
 async function baselineIfNeeded() {
-	// Check if any app table exists (db:push was used)
-	const [{ exists: tablesExist }] = await client`
+  // Check if any app table exists (db:push was used)
+  const [{ exists: tablesExist }] = await client`
 		SELECT EXISTS (
 			SELECT 1 FROM information_schema.tables
 			WHERE table_schema = 'public' AND table_name = 'users'
 		)`;
 
-	if (!tablesExist) return; // fresh database — nothing to baseline
+  if (!tablesExist) return; // fresh database — nothing to baseline
 
-	// Ensure the drizzle schema + migrations table exist
-	await client`CREATE SCHEMA IF NOT EXISTS drizzle`;
-	await client`
+  // Ensure the drizzle schema + migrations table exist
+  await client`CREATE SCHEMA IF NOT EXISTS drizzle`;
+  await client`
 		CREATE TABLE IF NOT EXISTS drizzle."__drizzle_migrations" (
 			id serial PRIMARY KEY,
 			hash text NOT NULL,
 			created_at bigint
 		)`;
 
-	// Get already-tracked hashes
-	const tracked = await client`
+  // Get already-tracked hashes
+  const tracked = await client`
 		SELECT hash FROM drizzle."__drizzle_migrations"`;
-	const trackedHashes = new Set(tracked.map((r) => r.hash as string));
+  const trackedHashes = new Set(tracked.map((r) => r.hash as string));
 
-	// Read the journal
-	const journalPath = join(import.meta.dirname, "migrations", "meta", "_journal.json");
-	const journal = JSON.parse(readFileSync(journalPath, "utf-8"));
+  // Read the journal
+  const journalPath = join(
+    import.meta.dirname,
+    "migrations",
+    "meta",
+    "_journal.json",
+  );
+  const journal = JSON.parse(readFileSync(journalPath, "utf-8"));
 
-	let baselined = 0;
-	for (const entry of journal.entries) {
-		const sqlPath = join(import.meta.dirname, "migrations", `${entry.tag}.sql`);
-		const sql = readFileSync(sqlPath, "utf-8");
-		const hash = new Bun.CryptoHasher("sha256").update(sql).digest("hex");
+  let baselined = 0;
+  for (const entry of journal.entries) {
+    const sqlPath = join(import.meta.dirname, "migrations", `${entry.tag}.sql`);
+    const sql = readFileSync(sqlPath, "utf-8");
+    const hash = new Bun.CryptoHasher("sha256").update(sql).digest("hex");
 
-		if (trackedHashes.has(hash)) continue; // already tracked
+    if (trackedHashes.has(hash)) continue; // already tracked
 
-		await client`
+    await client`
 			INSERT INTO drizzle."__drizzle_migrations" (hash, created_at)
 			VALUES (${hash}, ${entry.when})`;
-		baselined++;
-	}
+    baselined++;
+  }
 
-	if (baselined > 0) {
-		console.log(`Baselined ${baselined} migration(s) (db:push → migrations sync)`);
-	}
+  if (baselined > 0) {
+    console.log(
+      `Baselined ${baselined} migration(s) (db:push → migrations sync)`,
+    );
+  }
 }
 
 try {
-	console.log("Running database migrations…");
-	await baselineIfNeeded();
-	await migrate(db, { migrationsFolder: "./lib/db/migrations" });
-	console.log("Migrations applied successfully");
+  console.log("Running database migrations…");
+  await baselineIfNeeded();
+  await migrate(db, { migrationsFolder: "./lib/db/migrations" });
+  console.log("Migrations applied successfully");
 } catch (error) {
-	console.error("Migration failed:", error);
-	process.exit(1);
+  console.error("Migration failed:", error);
+  process.exit(1);
 } finally {
-	await client.end();
+  await client.end();
 }
