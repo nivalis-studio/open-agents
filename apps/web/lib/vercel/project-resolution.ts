@@ -16,9 +16,23 @@ export type ResolutionFailureReason =
   | "project_ambiguous"
   | "api_error";
 
+export interface ResolutionDebugInfo {
+  scopesQueried: number;
+  scopesSucceeded: number;
+  scopesFailed: number;
+  teamCount: number;
+  projectsFound: number;
+  repoUrlUsed: string;
+}
+
 export type ProjectResolutionResult =
-  | { ok: true; project: VercelProjectInfo }
-  | { ok: false; reason: ResolutionFailureReason; message?: string };
+  | { ok: true; project: VercelProjectInfo; debug?: ResolutionDebugInfo }
+  | {
+      ok: false;
+      reason: ResolutionFailureReason;
+      message?: string;
+      debug?: ResolutionDebugInfo;
+    };
 
 interface VercelProjectResponse {
   id: string;
@@ -82,8 +96,10 @@ async function fetchProjectsForScope(params: {
   const { vercelToken, repoOwner, repoName, teamId, slug } = params;
 
   const url = new URL(`${VERCEL_API_BASE}/v10/projects`);
-  url.searchParams.set("repo", `${repoOwner}/${repoName}`);
-  url.searchParams.set("repoType", "github");
+  url.searchParams.set(
+    "repoUrl",
+    `https://github.com/${repoOwner}/${repoName}`,
+  );
   if (teamId) {
     url.searchParams.set("teamId", teamId);
   }
@@ -124,6 +140,8 @@ export async function resolveVercelProject(params: {
 }): Promise<ProjectResolutionResult> {
   const { vercelToken, repoOwner, repoName } = params;
 
+  const repoUrl = `https://github.com/${repoOwner}/${repoName}`;
+
   try {
     const teams = await listVercelTeams(vercelToken);
 
@@ -155,6 +173,8 @@ export async function resolveVercelProject(params: {
     >();
 
     let hadSuccessfulQuery = false;
+    let scopesSucceeded = 0;
+    let scopesFailed = 0;
     let lastErrorStatus: number | null = null;
 
     for (const scope of scopes) {
@@ -167,6 +187,7 @@ export async function resolveVercelProject(params: {
       });
 
       if (!result.ok) {
+        scopesFailed++;
         lastErrorStatus = result.status;
         const scopeLabel = scope.teamId
           ? `teamId=${scope.teamId}`
@@ -180,6 +201,7 @@ export async function resolveVercelProject(params: {
       }
 
       hadSuccessfulQuery = true;
+      scopesSucceeded++;
 
       for (const project of result.projects) {
         const existing = projectsById.get(project.id);
@@ -197,12 +219,22 @@ export async function resolveVercelProject(params: {
       }
     }
 
+    const debug: ResolutionDebugInfo = {
+      scopesQueried: scopes.length,
+      scopesSucceeded,
+      scopesFailed,
+      teamCount: teams.length,
+      projectsFound: projectsById.size,
+      repoUrlUsed: repoUrl,
+    };
+
     if (projectsById.size === 0) {
       if (!hadSuccessfulQuery && lastErrorStatus !== null) {
         return {
           ok: false,
           reason: "api_error",
           message: `Vercel API returned ${lastErrorStatus}`,
+          debug,
         };
       }
 
@@ -210,6 +242,7 @@ export async function resolveVercelProject(params: {
         ok: false,
         reason: "project_unresolved",
         message: `No Vercel project found for ${repoOwner}/${repoName}`,
+        debug,
       };
     }
 
@@ -218,6 +251,7 @@ export async function resolveVercelProject(params: {
         ok: false,
         reason: "project_ambiguous",
         message: `Found ${projectsById.size} Vercel projects for ${repoOwner}/${repoName}`,
+        debug,
       };
     }
 
@@ -227,6 +261,7 @@ export async function resolveVercelProject(params: {
         ok: false,
         reason: "project_unresolved",
         message: `No Vercel project found for ${repoOwner}/${repoName}`,
+        debug,
       };
     }
 
@@ -238,6 +273,7 @@ export async function resolveVercelProject(params: {
         orgId: resolved.project.accountId,
         orgSlug: resolved.project.link?.org ?? resolved.teamSlug,
       },
+      debug,
     };
   } catch (error) {
     console.error("[Vercel] Project resolution failed:", error);

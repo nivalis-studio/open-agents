@@ -34,9 +34,7 @@ function toResponse(response: MockApiResponse): Response {
   } as Response;
 }
 
-async function withSuppressedConsoleError<T>(
-  fn: () => Promise<T>,
-): Promise<T> {
+async function withSuppressedConsoleError<T>(fn: () => Promise<T>): Promise<T> {
   const originalConsoleError = console.error;
   console.error = () => {};
   try {
@@ -127,8 +125,9 @@ describe("resolveVercelProject", () => {
         !call.url.includes("teamId=") &&
         !call.url.includes("slug="),
     );
-    expect(personalCall?.url).toContain("repo=acme%2Fapp");
-    expect(personalCall?.url).toContain("repoType=github");
+    expect(personalCall?.url).toContain(
+      "repoUrl=https%3A%2F%2Fgithub.com%2Facme%2Fapp",
+    );
     expect(personalCall?.init?.headers).toEqual({
       Authorization: "Bearer tok_test",
     });
@@ -261,27 +260,21 @@ describe("resolveVercelProject", () => {
         ok: true,
         status: 200,
         body: {
-          projects: [
-            { id: "prj_shared", name: "app", accountId: "team_1" },
-          ],
+          projects: [{ id: "prj_shared", name: "app", accountId: "team_1" }],
         },
       },
       "slug:acme": {
         ok: true,
         status: 200,
         body: {
-          projects: [
-            { id: "prj_shared", name: "app", accountId: "team_1" },
-          ],
+          projects: [{ id: "prj_shared", name: "app", accountId: "team_1" }],
         },
       },
       team_1: {
         ok: true,
         status: 200,
         body: {
-          projects: [
-            { id: "prj_shared", name: "app", accountId: "team_1" },
-          ],
+          projects: [{ id: "prj_shared", name: "app", accountId: "team_1" }],
         },
       },
     };

@@ -63,6 +63,14 @@ interface VercelEnvResolutionMeta {
   repoOwner?: string;
   repoName?: string;
   message?: string;
+  debug?: {
+    scopesQueried: number;
+    scopesSucceeded: number;
+    scopesFailed: number;
+    teamCount: number;
+    projectsFound: number;
+    repoUrlUsed: string;
+  };
 }
 
 export async function POST(req: Request) {
@@ -172,6 +180,7 @@ export async function POST(req: Request) {
           repoOwner,
           repoName,
         });
+        vercelEnvResolution.debug = result.debug;
         if (result.ok) {
           env.VERCEL_TOKEN = vercelToken;
           env.VERCEL_PROJECT_ID = result.project.projectId;
