@@ -12,7 +12,6 @@ import {
   type GatewayModelId,
   type LanguageModel,
   type LanguageModelUsage,
-  type ModelMessage,
 } from "ai";
 import { nanoid } from "nanoid";
 import { webAgent } from "@/app/config";
@@ -102,89 +101,6 @@ function extractLastInputTokensFromMessages(
   }
 
   return undefined;
-}
-
-const ENABLE_REASONING_DEBUG_LOGS =
-  process.env.OPEN_HARNESS_LOG_REASONING === "1";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function logModelReasoningBlocks(
-  messages: ModelMessage[],
-  context: { sessionId: string; chatId: string; stage: string },
-): void {
-  if (!ENABLE_REASONING_DEBUG_LOGS) {
-    return;
-  }
-
-  const reasoningBlocks: Array<Record<string, unknown>> = [];
-
-  for (
-    let messageIndex = 0;
-    messageIndex < messages.length;
-    messageIndex += 1
-  ) {
-    const message = messages[messageIndex];
-    if (
-      !message ||
-      message.role !== "assistant" ||
-      typeof message.content === "string"
-    ) {
-      continue;
-    }
-
-    for (
-      let partIndex = 0;
-      partIndex < message.content.length;
-      partIndex += 1
-    ) {
-      const part = message.content[partIndex];
-      if (!part || part.type !== "reasoning") {
-        continue;
-      }
-
-      const providerOptions =
-        "providerOptions" in part ? part.providerOptions : undefined;
-      const openaiOptions =
-        isRecord(providerOptions) && isRecord(providerOptions.openai)
-          ? providerOptions.openai
-          : null;
-
-      const itemId =
-        openaiOptions && typeof openaiOptions.itemId === "string"
-          ? openaiOptions.itemId
-          : null;
-      const encryptedContent =
-        openaiOptions &&
-        typeof openaiOptions.reasoningEncryptedContent === "string"
-          ? openaiOptions.reasoningEncryptedContent
-          : null;
-
-      reasoningBlocks.push({
-        messageIndex,
-        partIndex,
-        itemId,
-        reasoningTextLength: part.text.length,
-        encryptedContentLength: encryptedContent?.length ?? null,
-      });
-    }
-  }
-
-  console.log(
-    "[reasoning-debug][chat][model]",
-    JSON.stringify(
-      {
-        ...context,
-        messageCount: messages.length,
-        reasoningBlockCount: reasoningBlocks.length,
-        reasoningBlocks,
-      },
-      null,
-      2,
-    ),
-  );
 }
 
 const STREAM_TOKEN_SEPARATOR = ":";
@@ -332,12 +248,6 @@ export async function POST(req: Request) {
   const modelMessages = await convertToModelMessages(messages, {
     ignoreIncompleteToolCalls: true,
     tools: webAgent.tools,
-  });
-
-  logModelReasoningBlocks(modelMessages, {
-    sessionId,
-    chatId,
-    stage: "after-convertToModelMessages",
   });
 
   // Resolve a repo-scoped GitHub token when possible.
