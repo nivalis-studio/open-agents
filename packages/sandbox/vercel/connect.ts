@@ -2,6 +2,7 @@ import { Sandbox as VercelSandboxSDK } from "@vercel/sandbox";
 import type { SandboxHooks } from "../interface";
 import { VercelSandbox } from "./sandbox";
 import type { VercelState } from "./state";
+import { StatelessVercelSandbox } from "./stateless-sandbox";
 import { configureGitUser } from "./utils";
 
 interface ConnectOptions {
@@ -24,9 +25,36 @@ interface ConnectOptions {
 export async function connectVercel(
   state: VercelState,
   options?: ConnectOptions,
-): Promise<VercelSandbox> {
+): Promise<VercelSandbox | StatelessVercelSandbox> {
   // Reconnect to existing VM
   if (state.sandboxId) {
+    // In OIDC-enabled environments, use stateless REST calls by sandboxId to
+    // avoid an upfront Sandbox.get() roundtrip before executing commands.
+    if (StatelessVercelSandbox.canUseStatelessMode()) {
+      let remainingTimeout: number | undefined;
+      if (state.expiresAt) {
+        const remaining = state.expiresAt - Date.now();
+        if (remaining > 10_000) {
+          remainingTimeout = remaining;
+        }
+      }
+
+      const sandbox = new StatelessVercelSandbox({
+        sandboxId: state.sandboxId,
+        env: options?.env,
+        hooks: options?.hooks,
+        expiresAt: state.expiresAt,
+        timeout: remainingTimeout,
+      });
+
+      if (options?.hooks?.afterStart) {
+        await options.hooks.afterStart(sandbox);
+      }
+
+      return sandbox;
+    }
+
+    // Fallback to stateful SDK reconnect when OIDC context is unavailable.
     // Calculate remaining timeout from persisted expiresAt.
     // If persisted expiry is stale/expired, skip it so reconnect falls back to
     // VercelSandbox's default reconnect timeout instead of immediately expiring.

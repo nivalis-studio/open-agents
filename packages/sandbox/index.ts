@@ -1,4 +1,21 @@
 // interface
+
+// factory
+export {
+  type ConnectOptions,
+  connectSandbox,
+  type HybridConnectOptions,
+  type SandboxConnectConfig,
+  type SandboxState,
+} from "./factory";
+// hybrid
+export {
+  type HybridHooks,
+  HybridSandbox,
+  type HybridSandboxConfig,
+  type HybridState,
+  requiresVercel,
+} from "./hybrid";
 export type {
   ExecResult,
   Sandbox,
@@ -8,50 +25,29 @@ export type {
   SandboxType,
   SnapshotResult,
 } from "./interface";
-
+// just-bash
+export {
+  createJustBashSandbox,
+  JustBashSandbox,
+  type JustBashSandboxConfig,
+  type JustBashSnapshot,
+  type JustBashState,
+} from "./just-bash";
+// local
+export { createLocalSandbox, LocalSandbox } from "./local";
 // shared types
 export type {
-  Source,
   FileEntry,
   PendingOperation,
   SandboxStatus,
+  Source,
 } from "./types";
-
-// factory
-export {
-  connectSandbox,
-  type SandboxState,
-  type ConnectOptions,
-  type HybridConnectOptions,
-  type SandboxConnectConfig,
-} from "./factory";
-
-// local
-export { LocalSandbox, createLocalSandbox } from "./local";
-
 // vercel
 export {
   connectVercelSandbox,
+  StatelessVercelSandbox,
   VercelSandbox,
   type VercelSandboxConfig,
   type VercelSandboxConnectConfig,
   type VercelState,
 } from "./vercel";
-
-// just-bash
-export {
-  JustBashSandbox,
-  createJustBashSandbox,
-  type JustBashSandboxConfig,
-  type JustBashSnapshot,
-  type JustBashState,
-} from "./just-bash";
-
-// hybrid
-export {
-  HybridSandbox,
-  requiresVercel,
-  type HybridSandboxConfig,
-  type HybridState,
-  type HybridHooks,
-} from "./hybrid";

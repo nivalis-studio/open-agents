@@ -24,11 +24,13 @@
   },
   "dependencies": {
     "@vercel/sandbox": "^1.2.0",
-    "just-bash": "^2.1.0"
+    "just-bash": "^2.1.0",
+    "tar-stream": "^3.1.7"
   },
   "devDependencies": {
     "@open-harness/tsconfig": "workspace:*",
     "@types/node": "^22",
+    "@types/tar-stream": "^3.1.4",
     "oxlint": "^1.38.0"
   },
   "peerDependencies": {
