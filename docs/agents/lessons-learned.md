@@ -5,6 +5,7 @@ Hard-won knowledge from building this codebase. When you make a mistake or disco
 ## General / Tooling
 
 - Skill discovery de-duplicates by first-seen name, so project skill directories must be scanned before user-level directories to allow project overrides.
+- On Vercel/serverless, in-memory `Map` caches inside route handlers are best-effort only and should not be treated as durable cross-request caching; use a shared cache (Redis/KV/DB) for request-path caching that needs reliable hit rates.
 - The system prompt should list all model-invocable skills (including non-user-invocable ones), and reserve user-invocable filtering for the slash-command UI.
 - Glob patterns ending in `**` (for example `"**"` or `"src/**"`) should be treated as recursive, even when `**` is the final segment.
 - In shell tools, avoid piping primary command output directly to `head` when exit-code handling matters; pipeline semantics can mask real failures from the primary command.

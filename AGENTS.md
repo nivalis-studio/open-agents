@@ -10,6 +10,10 @@ This file provides guidance for AI coding agents working in this repository.
 - [Code Style & Patterns](docs/agents/code-style.md)
 - [Lessons Learned](docs/agents/lessons-learned.md)
 
+## Runtime Gotcha
+
+- On Vercel/serverless, process-local in-memory caches (for example `Map` in route handlers) are not reliable as a primary cache across requests. Use a shared cache (Redis/KV/DB) for cache-dependent request paths.
+
 ## Database & Migrations
 
 Schema lives in `apps/web/lib/db/schema.ts`. Migrations are managed by Drizzle Kit.
