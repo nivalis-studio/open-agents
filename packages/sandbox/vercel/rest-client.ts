@@ -187,7 +187,7 @@ export class VercelRestClient {
     signal?: AbortSignal;
   }): Promise<void> {
     await this.requestJson(
-      `/v1/sandboxes/${params.sandboxId}/${params.commandId}/kill`,
+      `/v1/sandboxes/${params.sandboxId}/cmd/${params.commandId}/kill`,
       {
         method: "POST",
         body: { signal: params.signalNumber ?? 15 },
