@@ -108,6 +108,7 @@ import {
 } from "@/lib/chat-streaming-state";
 import { ACCEPT_IMAGE_TYPES, isValidImageType } from "@/lib/image-utils";
 import { DEFAULT_CONTEXT_LIMIT } from "@/lib/models";
+import { getPostTurnRefreshDelays } from "@/lib/post-turn-refresh-polling";
 import { getPrDeploymentRefreshInterval } from "@/lib/pr-deployment-polling";
 import { DEFAULT_SANDBOX_TIMEOUT_MS } from "@/lib/sandbox/config";
 import { fetcher } from "@/lib/swr";
@@ -147,8 +148,6 @@ const Streamdown = dynamic(
 
 const STREAM_RECOVERY_STALL_MS = 4_000;
 const STREAM_RECOVERY_MIN_INTERVAL_MS = 8_000;
-const COMPLETED_TURN_FULL_REFRESH_DELAY_MS = 3_000;
-const AUTO_COMMIT_POST_TURN_POLL_DELAYS_MS = [5_000, 10_000, 15_000] as const;
 
 const emptySubscribe = () => () => {};
 
@@ -1961,14 +1960,13 @@ export function SessionChatContent({
       void requestMarkChatRead("force");
       void refreshChats();
 
-      if (session.cloneUrl && session.repoOwner && session.repoName) {
-        scheduleFollowUpRefresh(COMPLETED_TURN_FULL_REFRESH_DELAY_MS);
-
-        if (preferences?.autoCommitPush === true) {
-          for (const delayMs of AUTO_COMMIT_POST_TURN_POLL_DELAYS_MS) {
-            scheduleFollowUpRefresh(delayMs);
-          }
-        }
+      for (const delayMs of getPostTurnRefreshDelays({
+        hasRepoContext: Boolean(
+          session.cloneUrl && session.repoOwner && session.repoName,
+        ),
+        autoCommitPushEnabled: preferences?.autoCommitPush === true,
+      })) {
+        scheduleFollowUpRefresh(delayMs);
       }
     }
 
