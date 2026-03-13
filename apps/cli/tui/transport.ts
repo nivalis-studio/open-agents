@@ -2,6 +2,7 @@ import {
   collectTaskToolUsageEvents,
   defaultModelLabel,
   type GatewayConfig,
+  openHarnessTools,
   sumLanguageModelUsage,
 } from "@open-harness/agent";
 import {
@@ -65,7 +66,7 @@ export function createAgentTransport({
       // Pass the agent's tools so convertToModelMessages can properly handle
       // tool approval responses for locally-executed tools
       const modelMessages = await convertToModelMessages(messages, {
-        tools: agent.tools,
+        tools: openHarnessTools,
         ignoreIncompleteToolCalls: true,
       });
 

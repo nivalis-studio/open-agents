@@ -10,6 +10,7 @@ import {
 import { devToolsMiddleware } from "@ai-sdk/devtools";
 import type { AnthropicLanguageModelOptions } from "@ai-sdk/anthropic";
 import type { OpenAIResponsesProviderOptions } from "@ai-sdk/openai";
+import { z } from "zod";
 
 // Models with 4.5+ support adaptive thinking with effort control.
 // Older models use the legacy extended thinking API with a budget.
@@ -96,6 +97,54 @@ export interface GatewayOptions {
   providerOptionsOverrides?: ProviderOptionsByProvider;
 }
 
+const jsonValueSchema: z.ZodType<JSONValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
+export const gatewayConfigSchema = z.object({
+  baseURL: z.string().url(),
+  apiKey: z.string().min(1),
+});
+
+export const providerOptionsByProviderSchema = z.record(
+  z.string(),
+  z.record(z.string(), jsonValueSchema),
+);
+
+export const modelDescriptorSchema = z.object({
+  modelId: z.string().min(1),
+  gatewayConfig: gatewayConfigSchema.optional(),
+  providerOptionsOverrides: providerOptionsByProviderSchema.optional(),
+  devtools: z.boolean().optional(),
+});
+
+export type ModelDescriptor = z.infer<typeof modelDescriptorSchema>;
+
+export function createModelDescriptor(
+  modelId: string,
+  options: {
+    gatewayConfig?: GatewayConfig;
+    providerOptionsOverrides?: ProviderOptionsByProvider;
+    devtools?: boolean;
+  } = {},
+): ModelDescriptor {
+  return {
+    modelId,
+    ...(options.gatewayConfig ? { gatewayConfig: options.gatewayConfig } : {}),
+    ...(options.providerOptionsOverrides
+      ? { providerOptionsOverrides: options.providerOptionsOverrides }
+      : {}),
+    ...(options.devtools !== undefined ? { devtools: options.devtools } : {}),
+  };
+}
+
 export function shouldApplyOpenAIReasoningDefaults(modelId: string): boolean {
   return modelId.startsWith("openai/gpt-5");
 }
@@ -154,4 +203,18 @@ export function gateway(
   }
 
   return model;
+}
+
+export function createLanguageModelFromDescriptor(
+  descriptor: ModelDescriptor,
+): LanguageModel {
+  return gateway(descriptor.modelId as GatewayModelId, {
+    ...(descriptor.devtools !== undefined
+      ? { devtools: descriptor.devtools }
+      : {}),
+    ...(descriptor.gatewayConfig ? { config: descriptor.gatewayConfig } : {}),
+    ...(descriptor.providerOptionsOverrides
+      ? { providerOptionsOverrides: descriptor.providerOptionsOverrides }
+      : {}),
+  });
 }

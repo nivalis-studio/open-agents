@@ -85,7 +85,8 @@ EXAMPLES:
       { pattern, path: basePath, limit = 100 },
       { experimental_context },
     ) => {
-      const sandbox = getSandbox(experimental_context, "glob");
+      "use step";
+      const sandbox = await getSandbox(experimental_context, "glob");
       const workingDirectory = sandbox.workingDirectory;
 
       try {
@@ -98,12 +99,9 @@ EXAMPLES:
           searchDir = workingDirectory;
         }
 
-        // Extract file name pattern from glob (last segment)
         const patternParts = pattern.split("/").filter(Boolean);
         const namePattern = patternParts[patternParts.length - 1] ?? "*";
 
-        // Extract literal directory prefix (segments before any wildcards)
-        // e.g., "src/components/**/*.tsx" → prefix "src/components", name "*.tsx"
         const literalPrefix: string[] = [];
         for (let i = 0; i < patternParts.length - 1; i++) {
           const part = patternParts[i]!;
@@ -116,22 +114,15 @@ EXAMPLES:
           searchDir = path.join(searchDir, ...literalPrefix);
         }
 
-        // Determine maxdepth from remaining wildcard directory segments.
-        // e.g., "src/*/utils.ts" → literalPrefix ["src"], remaining dir ["*"], name "utils.ts"
-        //   → maxdepth 2 (one dir level + the file)
-        // e.g., "src/**/*.tsx" → remaining dir ["**"] → no maxdepth (recursive)
-        // e.g., "*.json" → no remaining dir segments → maxdepth 1 (current dir only)
         const remainingDirSegments = patternParts.slice(
           literalPrefix.length,
           patternParts.length - 1,
         );
-        // A trailing "**" segment (e.g. "**", "src/**") should also remain recursive.
         const hasRecursiveWildcard =
           remainingDirSegments.some((s) => s === "**") || namePattern === "**";
 
         let maxDepth: number | undefined;
         if (!hasRecursiveWildcard) {
-          // Each * segment = one directory level, +1 for the file itself
           maxDepth = remainingDirSegments.length + 1;
         }
 
@@ -152,9 +143,6 @@ EXAMPLES:
           shellEscape(namePattern),
         );
 
-        // Get file metadata (mtime, size) along with paths.
-        // GNU find -printf (Linux): outputs mtime/size/path directly.
-        // BSD find (macOS): pipe to xargs stat to avoid running find twice.
         const findBase = findArgs.join(" ");
         const command = [
           `{ ${findBase} -printf '%T@\\t%s\\t%p\\n' 2>/dev/null`,
@@ -180,7 +168,6 @@ EXAMPLES:
         const lines = result.stdout.split("\n").filter(Boolean);
 
         for (const line of lines) {
-          // Format: mtime_epoch\tsize\tpath
           const firstTab = line.indexOf("\t");
           if (firstTab === -1) continue;
           const secondTab = line.indexOf("\t", firstTab + 1);
@@ -211,7 +198,6 @@ EXAMPLES:
           })),
         };
 
-        // Include debug info when no results found to aid diagnosis
         if (files.length === 0) {
           response._debug = {
             command,

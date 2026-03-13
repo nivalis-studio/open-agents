@@ -1,51 +1,41 @@
 import type { Sandbox } from "@open-harness/sandbox";
 import {
-  gateway,
-  type LanguageModel,
   stepCountIs,
   ToolLoopAgent,
-  type ToolSet,
+  type LanguageModel,
+  type ModelMessage,
+  type StepResult,
   type TypedToolResult,
 } from "ai";
+import {
+  DurableAgent,
+  type CompatibleLanguageModel,
+  type DurableAgentStreamOptions,
+  type DurableAgentStreamResult,
+} from "@workflow/ai/agent";
 import { z } from "zod";
 import { addCacheControl } from "./context-management";
 import { aggressiveCompactContext } from "./context-management/aggressive-compaction";
+import {
+  createLanguageModelFromDescriptor,
+  gateway,
+  type ModelDescriptor,
+} from "./models";
 import { preparePromptForOpenAIReasoning } from "./openai-reasoning";
-
 import type { SkillMetadata } from "./skills/types";
 import { buildSystemPrompt } from "./system-prompt";
+import { openHarnessTools } from "./toolset";
 import {
-  askUserQuestionTool,
-  bashTool,
-  editFileTool,
-  globTool,
-  grepTool,
-  readFileTool,
-  skillTool,
-  taskTool,
-  todoWriteTool,
-  webFetchTool,
-  writeFileTool,
-} from "./tools";
-import type { ApprovalConfig, TodoItem } from "./types";
-import { approvalRuleSchema } from "./types";
+  approvalConfigSchema,
+  compactionContextSchema,
+  type CompactionContext,
+  type LiveAgentContext,
+  serializableRuntimeContextSchema,
+  type SerializableRuntimeContext,
+  type TodoItem,
+} from "./types";
 
-const approvalConfigSchema = z.discriminatedUnion("type", [
-  z.object({
-    type: z.literal("interactive"),
-    autoApprove: z.enum(["off", "edits", "all"]).default("off"),
-    sessionRules: z.array(approvalRuleSchema).default([]),
-  }),
-  z.object({ type: z.literal("background") }),
-  z.object({ type: z.literal("delegated") }),
-]);
-
-const compactionContextSchema = z.object({
-  contextLimit: z.number().int().positive().optional(),
-  lastInputTokens: z.number().int().nonnegative().optional(),
-});
-
-const callOptionsSchema = z.object({
+const localCallOptionsSchema = z.object({
   sandbox: z.custom<Sandbox>(),
   approval: approvalConfigSchema,
   model: z.custom<LanguageModel>().optional(),
@@ -55,9 +45,12 @@ const callOptionsSchema = z.object({
   context: compactionContextSchema.optional(),
 });
 
-type CompactionContext = z.infer<typeof compactionContextSchema>;
-
-export type OpenHarnessAgentCallOptions = z.infer<typeof callOptionsSchema>;
+export type OpenHarnessLocalCallOptions = z.infer<
+  typeof localCallOptionsSchema
+>;
+export type OpenHarnessDurableCallOptions = z.infer<
+  typeof serializableRuntimeContextSchema
+>;
 
 function getCompactionContextFromExperimentalContext(
   experimentalContext: unknown,
@@ -96,13 +89,25 @@ const MODEL_COMPACTION_TUNING_OVERRIDES: Record<
   Partial<CompactionTuning>
 > = {};
 
-function getModelId(model: LanguageModel): string {
-  return typeof model === "string" ? model : model.modelId;
+function getModelId(
+  model: LanguageModel | ModelDescriptor | undefined,
+): string | undefined {
+  if (!model) {
+    return undefined;
+  }
+
+  if (typeof model === "string") {
+    return model;
+  }
+
+  if ("modelId" in model && typeof model.modelId === "string") {
+    return model.modelId;
+  }
+
+  return undefined;
 }
 
-function resolveCompactionTuning(model: LanguageModel): CompactionTuning {
-  const modelId = getModelId(model);
-
+function resolveCompactionTuning(modelId: string): CompactionTuning {
   const exactMatch = MODEL_COMPACTION_TUNING_OVERRIDES[modelId];
   if (exactMatch) {
     return {
@@ -125,104 +130,197 @@ function resolveCompactionTuning(model: LanguageModel): CompactionTuning {
   return DEFAULT_COMPACTION_TUNING;
 }
 
-export const defaultModel = gateway("anthropic/claude-haiku-4.5");
-export const defaultModelLabel = defaultModel.modelId;
+function buildOpenHarnessInstructions(options: {
+  approvalType: LiveAgentContext["approval"]["type"];
+  workingDirectory: string;
+  currentBranch?: string;
+  environmentDetails?: string;
+  customInstructions?: string;
+  skills?: SkillMetadata[];
+  modelId?: string;
+}): string {
+  const mode =
+    options.approvalType === "background" ? "background" : "interactive";
 
-const tools = {
-  todo_write: todoWriteTool,
-  read: readFileTool(),
-  write: writeFileTool(),
-  edit: editFileTool(),
-  grep: grepTool(),
-  glob: globTool(),
-  bash: bashTool(),
-  task: taskTool,
-  ask_user_question: askUserQuestionTool,
-  skill: skillTool,
-  web_fetch: webFetchTool,
-} satisfies ToolSet;
+  return buildSystemPrompt({
+    cwd: options.workingDirectory,
+    mode,
+    currentBranch: options.currentBranch,
+    customInstructions: options.customInstructions,
+    environmentDetails: options.environmentDetails,
+    skills: options.skills ?? [],
+    modelId: options.modelId,
+  });
+}
 
-export const openHarnessAgent = new ToolLoopAgent({
-  model: defaultModel,
-  instructions: buildSystemPrompt({}),
-  tools,
-  stopWhen: stepCountIs(200),
-  callOptionsSchema,
-  prepareStep: ({ messages, model, steps, experimental_context }) => {
-    const callContext =
-      getCompactionContextFromExperimentalContext(experimental_context);
-    const compactionTuning = resolveCompactionTuning(model);
+function prepareMessagesForOpenHarness<
+  TStepResult extends StepResult<typeof openHarnessTools>,
+>(options: {
+  messages: ModelMessage[];
+  model: LanguageModel;
+  steps: TStepResult[];
+  context?: CompactionContext;
+}): ModelMessage[] {
+  const preparedPrompt = preparePromptForOpenAIReasoning({
+    model: options.model,
+    messages: options.messages,
+  });
 
-    return {
-      messages: addCacheControl({
-        messages: aggressiveCompactContext({
+  const compactionTuning = resolveCompactionTuning(
+    getModelId(options.model) ?? defaultModelLabel,
+  );
+
+  return addCacheControl({
+    messages: aggressiveCompactContext({
+      messages: preparedPrompt.messages ?? options.messages,
+      steps: options.steps,
+      contextLimit: options.context?.contextLimit ?? DEFAULT_CONTEXT_LIMIT,
+      lastInputTokens: options.context?.lastInputTokens,
+      triggerPercent: compactionTuning.triggerPercent,
+      minSavingsPercent: compactionTuning.minSavingsPercent,
+      retainRecentToolCalls: compactionTuning.retainRecentToolCalls,
+    }),
+    model: options.model,
+  });
+}
+
+export const defaultModelLabel = "anthropic/claude-haiku-4.5";
+export const defaultModel = gateway(defaultModelLabel);
+
+export function createOpenHarnessAgent() {
+  return new ToolLoopAgent({
+    model: defaultModel,
+    instructions: buildSystemPrompt({}),
+    tools: openHarnessTools,
+    stopWhen: stepCountIs(200),
+    callOptionsSchema: localCallOptionsSchema,
+    prepareStep: ({ messages, model, steps, experimental_context }) => {
+      const callContext =
+        getCompactionContextFromExperimentalContext(experimental_context);
+
+      return {
+        messages: prepareMessagesForOpenHarness({
           messages,
+          model,
           steps,
-          contextLimit: callContext?.contextLimit ?? DEFAULT_CONTEXT_LIMIT,
-          lastInputTokens: callContext?.lastInputTokens,
-          triggerPercent: compactionTuning.triggerPercent,
-          minSavingsPercent: compactionTuning.minSavingsPercent,
-          retainRecentToolCalls: compactionTuning.retainRecentToolCalls,
+          context: callContext,
         }),
-        model,
-      }),
-    };
-  },
-  prepareCall: ({ options, model, ...settings }) => {
-    if (!options) {
-      throw new Error(
-        "Open Harness agent requires call options with sandbox and approval config.",
-      );
-    }
-    const approval: ApprovalConfig = options.approval;
-    const callModel = options.model ?? model;
-    const subagentModel = options.subagentModel;
-    const customInstructions = options.customInstructions;
-    const sandbox = options.sandbox;
-    const skills = options.skills ?? [];
-    const context = options.context;
-    const preparedPrompt = preparePromptForOpenAIReasoning({
-      model: callModel,
-      messages: settings.messages,
-      prompt: settings.prompt,
-    });
+      };
+    },
+    prepareCall: ({ options, model, ...settings }) => {
+      if (!options) {
+        throw new Error(
+          "Open Harness agent requires call options with sandbox and approval config.",
+        );
+      }
 
-    // Derive mode for system prompt (interactive vs background)
-    const mode = approval.type === "background" ? "background" : "interactive";
-
-    const instructions = buildSystemPrompt({
-      cwd: sandbox.workingDirectory,
-      mode,
-      currentBranch: sandbox.currentBranch,
-      customInstructions,
-      environmentDetails: sandbox.environmentDetails,
-      skills,
-      modelId: typeof callModel === "string" ? callModel : callModel.modelId,
-    });
-
-    return {
-      ...settings,
-      ...preparedPrompt,
-      model: callModel,
-      tools: addCacheControl({
-        tools: settings.tools ?? tools,
+      const approval = options.approval;
+      const callModel = options.model ?? model;
+      const subagentModel = options.subagentModel;
+      const customInstructions = options.customInstructions;
+      const sandbox = options.sandbox;
+      const skills = options.skills ?? [];
+      const context = options.context;
+      const preparedPrompt = preparePromptForOpenAIReasoning({
         model: callModel,
-      }),
-      instructions,
-      experimental_context: {
-        sandbox,
-        approval,
+        messages: settings.messages,
+        prompt: settings.prompt,
+      });
+
+      const instructions = buildOpenHarnessInstructions({
+        approvalType: approval.type,
+        workingDirectory: sandbox.workingDirectory,
+        currentBranch: sandbox.currentBranch,
+        environmentDetails: sandbox.environmentDetails,
+        customInstructions,
         skills,
+        modelId: getModelId(callModel),
+      });
+
+      return {
+        ...settings,
+        ...preparedPrompt,
         model: callModel,
-        subagentModel,
-        context,
-      },
-    };
-  },
-});
+        tools: addCacheControl({
+          tools: settings.tools ?? openHarnessTools,
+          model: callModel,
+        }),
+        instructions,
+        experimental_context: {
+          sandbox,
+          approval,
+          skills,
+          model: callModel,
+          subagentModel,
+          customInstructions,
+          context,
+        } satisfies LiveAgentContext,
+      };
+    },
+  });
+}
+
+export interface OpenHarnessDurableAgent {
+  tools: typeof openHarnessTools;
+  stream(
+    options: Omit<
+      DurableAgentStreamOptions<typeof openHarnessTools>,
+      "experimental_context" | "maxSteps" | "prepareStep"
+    >,
+  ): Promise<DurableAgentStreamResult<typeof openHarnessTools>>;
+}
+
+export function createOpenHarnessDurableAgent(
+  runtimeContext: SerializableRuntimeContext,
+): OpenHarnessDurableAgent {
+  const model = createLanguageModelFromDescriptor(runtimeContext.model);
+  const instructions = buildOpenHarnessInstructions({
+    approvalType: runtimeContext.approval.type,
+    workingDirectory: runtimeContext.workingDirectory,
+    currentBranch: runtimeContext.currentBranch,
+    environmentDetails: runtimeContext.environmentDetails,
+    customInstructions: runtimeContext.customInstructions,
+    skills: runtimeContext.skills,
+    modelId: runtimeContext.model.modelId,
+  });
+
+  const durableAgent = new DurableAgent({
+    model: async () => model as CompatibleLanguageModel,
+    tools: addCacheControl({ tools: openHarnessTools, model }),
+    system: instructions,
+  });
+
+  return {
+    tools: openHarnessTools,
+    stream: (options) =>
+      durableAgent.stream({
+        ...options,
+        maxSteps: 200,
+        experimental_context: runtimeContext,
+        prepareStep: ({ messages, steps, experimental_context }) => {
+          const context = serializableRuntimeContextSchema.parse(
+            experimental_context ?? runtimeContext,
+          );
+          const stepModel = createLanguageModelFromDescriptor(context.model);
+          const preparedMessages = prepareMessagesForOpenHarness({
+            messages: messages as unknown as ModelMessage[],
+            model: stepModel,
+            steps: steps as StepResult<typeof openHarnessTools>[],
+            context: context.context,
+          });
+
+          return {
+            model: async () => stepModel as CompatibleLanguageModel,
+            messages: preparedMessages as unknown as typeof messages,
+            experimental_context: context,
+          };
+        },
+      }),
+  };
+}
 
 export function extractTodosFromStep(
-  toolResults: Array<TypedToolResult<typeof openHarnessAgent.tools>>,
+  toolResults: Array<TypedToolResult<typeof openHarnessTools>>,
 ): TodoItem[] | null {
   for (const result of toolResults) {
     if (!result.dynamic && result.toolName === "todo_write" && result.output) {
@@ -231,5 +329,3 @@ export function extractTodosFromStep(
   }
   return null;
 }
-
-export type OpenHarnessAgent = typeof openHarnessAgent;

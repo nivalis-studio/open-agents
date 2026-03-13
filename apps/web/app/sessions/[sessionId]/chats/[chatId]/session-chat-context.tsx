@@ -28,7 +28,7 @@ import {
   useSessionGitStatus,
 } from "@/hooks/use-session-git-status";
 import { useSessionSkills } from "@/hooks/use-session-skills";
-import { AbortableChatTransport } from "@/lib/abortable-chat-transport";
+import { AbortableWorkflowChatTransport } from "@/lib/abortable-chat-transport";
 import {
   abortChatInstanceTransport,
   getOrCreateChatInstance,
@@ -41,6 +41,21 @@ import { hasRuntimeSandboxState as hasRuntimeSandboxStateValue } from "@/lib/san
 const KNOWN_SANDBOX_TYPES = ["vercel"] as const;
 type KnownSandboxType = (typeof KNOWN_SANDBOX_TYPES)[number];
 const CHAT_UI_UPDATE_THROTTLE_MS = 75;
+const STREAM_TOKEN_SEPARATOR = ":";
+
+function parseActiveWorkflowRunId(activeStreamId: string | null | undefined) {
+  if (!activeStreamId) {
+    return null;
+  }
+
+  const separatorIndex = activeStreamId.indexOf(STREAM_TOKEN_SEPARATOR);
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const runId = activeStreamId.slice(separatorIndex + 1);
+  return runId || null;
+}
 
 function asKnownSandboxType(value: unknown): KnownSandboxType | null {
   if (typeof value !== "string") return null;
@@ -298,25 +313,43 @@ export function SessionChatProvider({
     contextLimitRef.current = contextLimit;
   }, [contextLimit]);
 
+  const activeWorkflowRunIdRef = useRef<string | null>(
+    parseActiveWorkflowRunId(initialChat.activeStreamId),
+  );
+
   const transport = useMemo(
     () =>
-      new AbortableChatTransport({
+      new AbortableWorkflowChatTransport({
         api: "/api/chat",
-        body: () => {
+        prepareSendMessagesRequest: async ({ body, ...request }) => {
           const requestContextLimit = contextLimitRef.current;
           return {
-            sessionId: sessionRecord.id,
-            chatId: chatInfo.id,
-            ...(requestContextLimit !== null
-              ? {
-                  context: {
-                    contextLimit: requestContextLimit,
-                  },
-                }
-              : {}),
+            ...request,
+            body: {
+              ...body,
+              sessionId: sessionRecord.id,
+              chatId: chatInfo.id,
+              ...(requestContextLimit !== null
+                ? {
+                    context: {
+                      contextLimit: requestContextLimit,
+                    },
+                  }
+                : {}),
+            },
           };
         },
-        prepareReconnectToStreamRequest: ({ id }) => ({
+        onChatSendMessage: (response) => {
+          const workflowRunId = response.headers.get("x-workflow-run-id");
+          if (workflowRunId) {
+            activeWorkflowRunIdRef.current = workflowRunId;
+          }
+        },
+        onChatEnd: () => {
+          activeWorkflowRunIdRef.current = null;
+        },
+        prepareReconnectToStreamRequest: ({ id, ...request }) => ({
+          ...request,
           api: `/api/chat/${id}/stream`,
         }),
       }),

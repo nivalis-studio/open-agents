@@ -1,7 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
 import * as path from "path";
-import * as fs from "fs";
 import {
   getSandbox,
   getApprovalContext,
@@ -30,15 +29,17 @@ const readInputSchema = z.object({
  * Resolve file path with fallback for root-like paths.
  * If a path like "/README.md" doesn't exist, try resolving it relative to workingDirectory.
  */
-function resolveFilePath(filePath: string, workingDirectory: string): string {
+async function resolveFilePath(
+  filePath: string,
+  sandbox: Awaited<ReturnType<typeof getSandbox>>,
+): Promise<string> {
+  const workingDirectory = sandbox.workingDirectory;
   let absolutePath = path.isAbsolute(filePath)
     ? filePath
     : path.resolve(workingDirectory, filePath);
 
-  // If path doesn't exist and looks like a root-relative path (e.g., /README.md),
-  // try resolving it relative to the working directory
   try {
-    fs.accessSync(absolutePath);
+    await sandbox.access(absolutePath);
   } catch {
     if (
       filePath.startsWith("/") &&
@@ -47,7 +48,7 @@ function resolveFilePath(filePath: string, workingDirectory: string): string {
     ) {
       const workspaceRelativePath = path.join(workingDirectory, filePath);
       try {
-        fs.accessSync(workspaceRelativePath);
+        await sandbox.access(workspaceRelativePath);
         absolutePath = workspaceRelativePath;
       } catch {
         // Neither path exists - return original
@@ -60,7 +61,7 @@ function resolveFilePath(filePath: string, workingDirectory: string): string {
 
 export const readFileTool = () =>
   tool({
-    needsApproval: (args, { experimental_context }) => {
+    needsApproval: async (args, { experimental_context }) => {
       const ctx = getApprovalContext(experimental_context, "read");
       const { approval } = ctx;
 
@@ -69,8 +70,11 @@ export const readFileTool = () =>
         return false;
       }
 
+      const sandbox = await getSandbox(experimental_context, "read");
+      const resolvedPath = await resolveFilePath(args.filePath, sandbox);
+
       return pathNeedsApproval({
-        path: resolveFilePath(args.filePath, ctx.workingDirectory),
+        path: resolvedPath,
         tool: "read",
         approval,
         workingDirectory: ctx.workingDirectory,
@@ -99,12 +103,12 @@ EXAMPLES:
       { filePath, offset = 1, limit = 2000 },
       { experimental_context },
     ) => {
-      const sandbox = getSandbox(experimental_context, "read");
+      "use step";
+      const sandbox = await getSandbox(experimental_context, "read");
       const workingDirectory = sandbox.workingDirectory;
 
       try {
-        // Use the same path resolution logic as needsApproval
-        const absolutePath = resolveFilePath(filePath, workingDirectory);
+        const absolutePath = await resolveFilePath(filePath, sandbox);
 
         const stats = await sandbox.stat(absolutePath);
         if (stats.isDirectory()) {

@@ -1,13 +1,26 @@
 import type { Sandbox } from "@open-harness/sandbox";
-import type { LanguageModel } from "ai";
-import { gateway, stepCountIs, ToolLoopAgent } from "ai";
+import {
+  stepCountIs,
+  ToolLoopAgent,
+  type LanguageModel,
+  type ModelMessage,
+} from "ai";
+import {
+  DurableAgent,
+  type CompatibleLanguageModel,
+  type DurableAgentStreamOptions,
+  type DurableAgentStreamResult,
+} from "@workflow/ai/agent";
 import { z } from "zod";
+import { addCacheControl } from "../context-management";
+import { createLanguageModelFromDescriptor, gateway } from "../models";
 import { preparePromptForOpenAIReasoning } from "../openai-reasoning";
 import { bashTool } from "../tools/bash";
 import { globTool } from "../tools/glob";
 import { grepTool } from "../tools/grep";
 import { readFileTool } from "../tools/read";
 import { editFileTool, writeFileTool } from "../tools/write";
+import type { SerializableRuntimeContext } from "../types";
 
 const EXECUTOR_SYSTEM_PROMPT = `You are an executor agent - a fire-and-forget subagent that completes specific, well-defined implementation tasks autonomously.
 
@@ -56,7 +69,16 @@ You have full access to file operations (read, write, edit, grep, glob) and bash
 - All bash commands automatically run in the working directory — NEVER prepend \`cd <working-directory> &&\` or similar to commands
 - Just run the command directly (e.g., \`npm test\`)`;
 
-const callOptionsSchema = z.object({
+const executorTools = {
+  read: readFileTool(),
+  write: writeFileTool(),
+  edit: editFileTool(),
+  grep: grepTool(),
+  glob: globTool(),
+  bash: bashTool(),
+};
+
+const localCallOptionsSchema = z.object({
   task: z.string().describe("Short description of the task"),
   instructions: z.string().describe("Detailed instructions for the task"),
   sandbox: z
@@ -65,35 +87,28 @@ const callOptionsSchema = z.object({
   model: z.custom<LanguageModel>().describe("Language model for this subagent"),
 });
 
-export type ExecutorCallOptions = z.infer<typeof callOptionsSchema>;
+export type ExecutorLocalCallOptions = z.infer<typeof localCallOptionsSchema>;
 
-export const executorSubagent = new ToolLoopAgent({
-  model: gateway("anthropic/claude-haiku-4.5"),
-  instructions: EXECUTOR_SYSTEM_PROMPT,
-  tools: {
-    // All tools auto-approve in delegated mode (set via prepareCall)
-    read: readFileTool(),
-    write: writeFileTool(),
-    edit: editFileTool(),
-    grep: grepTool(),
-    glob: globTool(),
-    bash: bashTool(),
-  },
-  stopWhen: stepCountIs(100),
-  callOptionsSchema,
-  prepareCall: ({ options, ...settings }) => {
-    const sandbox = options.sandbox;
-    const model = options.model ?? settings.model;
-    const preparedPrompt = preparePromptForOpenAIReasoning({
-      model,
-      messages: settings.messages,
-      prompt: settings.prompt,
-    });
-    return {
-      ...settings,
-      ...preparedPrompt,
-      model,
-      instructions: `${EXECUTOR_SYSTEM_PROMPT}
+export function createExecutorSubagent() {
+  return new ToolLoopAgent({
+    model: gateway("anthropic/claude-haiku-4.5"),
+    instructions: EXECUTOR_SYSTEM_PROMPT,
+    tools: executorTools,
+    stopWhen: stepCountIs(100),
+    callOptionsSchema: localCallOptionsSchema,
+    prepareCall: ({ options, ...settings }) => {
+      const sandbox = options.sandbox;
+      const model = options.model ?? settings.model;
+      const preparedPrompt = preparePromptForOpenAIReasoning({
+        model,
+        messages: settings.messages,
+        prompt: settings.prompt,
+      });
+      return {
+        ...settings,
+        ...preparedPrompt,
+        model,
+        instructions: `${EXECUTOR_SYSTEM_PROMPT}
 
 Working directory: . (workspace root)
 Use workspace-relative paths for all file operations.
@@ -108,11 +123,59 @@ ${options.instructions}
 - You CANNOT ask questions - no one will respond
 - Complete the task fully before returning
 - Your final message MUST include both a **Summary** of what you did AND the **Answer** to the task`,
-      experimental_context: {
-        sandbox,
-        approval: { type: "delegated" },
-        model,
-      },
-    };
-  },
-});
+        experimental_context: {
+          sandbox,
+          approval: { type: "delegated" },
+          model,
+        },
+      };
+    },
+  });
+}
+
+export interface ExecutorDurableSubagent {
+  tools: typeof executorTools;
+  stream(
+    options: Omit<
+      DurableAgentStreamOptions<typeof executorTools>,
+      "experimental_context" | "maxSteps" | "prepareStep"
+    >,
+  ): Promise<DurableAgentStreamResult<typeof executorTools>>;
+}
+
+export function createExecutorDurableSubagent(
+  runtimeContext: SerializableRuntimeContext,
+): ExecutorDurableSubagent {
+  const model = createLanguageModelFromDescriptor(runtimeContext.model);
+  const durableAgent = new DurableAgent({
+    model: async () => model as CompatibleLanguageModel,
+    tools: addCacheControl({ tools: executorTools, model }),
+    system: EXECUTOR_SYSTEM_PROMPT,
+  });
+
+  return {
+    tools: executorTools,
+    stream: (options) =>
+      durableAgent.stream({
+        ...options,
+        maxSteps: 100,
+        experimental_context: runtimeContext,
+        prepareStep: ({ messages }) => {
+          const preparedMessages = preparePromptForOpenAIReasoning({
+            model,
+            messages: messages as unknown as ModelMessage[],
+          }).messages;
+
+          return {
+            model: async () => model as CompatibleLanguageModel,
+            messages: addCacheControl({
+              messages:
+                preparedMessages ?? (messages as unknown as ModelMessage[]),
+              model,
+            }) as unknown as typeof messages,
+            experimental_context: runtimeContext,
+          };
+        },
+      }),
+  };
+}

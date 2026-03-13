@@ -1,34 +1,47 @@
 import type {
   DynamicToolUIPart,
-  InferAgentUIMessage,
   InferUITools,
+  LanguageModel,
   LanguageModelUsage,
   ToolUIPart,
+  UIMessage,
 } from "ai";
-import type { GatewayConfig } from "@open-harness/agent";
+import type {
+  ApprovalConfig,
+  CompactionContext,
+  GatewayConfig,
+  SkillMetadata,
+  createOpenHarnessAgent,
+} from "@open-harness/agent";
+import { openHarnessTools } from "@open-harness/agent";
 import type { Sandbox } from "@open-harness/sandbox";
-import type { tuiAgent } from "./config";
 import type { Settings } from "./lib/settings";
 import type { ModelInfo } from "./lib/models";
 
-export type TUIAgent = typeof tuiAgent;
-export type TUIAgentCallOptions = Parameters<
-  TUIAgent["generate"]
->["0"]["options"];
+export type TUIAgent = ReturnType<typeof createOpenHarnessAgent>;
+
+export type TUIAgentCallOptions = {
+  sandbox: Sandbox;
+  approval: ApprovalConfig;
+  model?: LanguageModel;
+  subagentModel?: LanguageModel;
+  customInstructions?: string;
+  skills?: SkillMetadata[];
+  context?: CompactionContext;
+};
 
 export type TUIAgentMessageMetadata = {
   lastStepUsage?: LanguageModelUsage;
   totalMessageUsage?: LanguageModelUsage;
 };
 
-// all derived
-export type TUIAgentUIMessage = InferAgentUIMessage<
-  TUIAgent,
-  TUIAgentMessageMetadata
+export type TUIAgentUITools = InferUITools<typeof openHarnessTools>;
+export type TUIAgentUIMessage = UIMessage<
+  TUIAgentMessageMetadata,
+  never,
+  TUIAgentUITools
 >;
 export type TUIAgentUIMessagePart = TUIAgentUIMessage["parts"][number];
-export type TUIAgentTools = TUIAgent["tools"];
-export type TUIAgentUITools = InferUITools<TUIAgentTools>;
 export type TUIAgentUIToolPart =
   | DynamicToolUIPart
   | ToolUIPart<TUIAgentUITools>;

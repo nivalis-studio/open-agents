@@ -1,6 +1,8 @@
-import type { Sandbox } from "@open-harness/sandbox";
+import type { Sandbox, SandboxState } from "@open-harness/sandbox";
 import type { LanguageModel } from "ai";
 import { z } from "zod";
+import { modelDescriptorSchema, type ModelDescriptor } from "./models";
+import type { SkillMetadata } from "./skills/types";
 
 export const todoStatusSchema = z.enum(["pending", "in_progress", "completed"]);
 export type TodoStatus = z.infer<typeof todoStatusSchema>;
@@ -30,23 +32,6 @@ export type ApprovalConfig =
   | { type: "background" }
   | { type: "delegated" };
 
-import type { SkillMetadata } from "./skills/types";
-
-export interface AgentContext {
-  sandbox: Sandbox;
-  approval: ApprovalConfig;
-  skills?: SkillMetadata[];
-  model: LanguageModel;
-  subagentModel?: LanguageModel;
-}
-
-/**
- * Approval rules for auto-approving tool operations within a session.
- * Rules are matched against tool arguments to skip manual approval.
- *
- * Path-glob rules can match paths both inside and outside the working directory.
- * This allows users to grant persistent approval for specific external paths.
- */
 export const approvalRuleSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("command-prefix"),
@@ -71,5 +56,79 @@ export const approvalRuleSchema = z.discriminatedUnion("type", [
 ]);
 
 export type ApprovalRule = z.infer<typeof approvalRuleSchema>;
+
+export const approvalConfigSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("interactive"),
+    autoApprove: z.enum(["off", "edits", "all"]).default("off"),
+    sessionRules: z.array(approvalRuleSchema).default([]),
+  }),
+  z.object({ type: z.literal("background") }),
+  z.object({ type: z.literal("delegated") }),
+]);
+
+export const compactionContextSchema = z.object({
+  contextLimit: z.number().int().positive().optional(),
+  lastInputTokens: z.number().int().nonnegative().optional(),
+});
+
+export type CompactionContext = z.infer<typeof compactionContextSchema>;
+
+const sandboxTypeSchema = z.literal("vercel");
+
+type RestorableSandboxType = Extract<SandboxState, { type: "vercel" }>["type"];
+
+export const sandboxRuntimeMetadataSchema = z.object({
+  sandboxId: z.string().min(1),
+  sandboxType: sandboxTypeSchema.default("vercel"),
+  workingDirectory: z.string().min(1),
+  currentBranch: z.string().optional(),
+  environmentDetails: z.string().optional(),
+  host: z.string().optional(),
+  expiresAt: z.number().int().nonnegative().optional(),
+  timeout: z.number().int().positive().optional(),
+});
+
+export type SandboxRuntimeMetadata = {
+  sandboxId: string;
+  sandboxType: RestorableSandboxType;
+  workingDirectory: string;
+  currentBranch?: string;
+  environmentDetails?: string;
+  host?: string;
+  expiresAt?: number;
+  timeout?: number;
+};
+
+export const serializableRuntimeContextSchema =
+  sandboxRuntimeMetadataSchema.extend({
+    approval: approvalConfigSchema,
+    skills: z.custom<SkillMetadata[]>().optional(),
+    model: modelDescriptorSchema,
+    subagentModel: modelDescriptorSchema.optional(),
+    customInstructions: z.string().optional(),
+    context: compactionContextSchema.optional(),
+  });
+
+export interface SerializableRuntimeContext extends SandboxRuntimeMetadata {
+  approval: ApprovalConfig;
+  skills?: SkillMetadata[];
+  model: ModelDescriptor;
+  subagentModel?: ModelDescriptor;
+  customInstructions?: string;
+  context?: CompactionContext;
+}
+
+export interface LiveAgentContext {
+  sandbox: Sandbox;
+  approval: ApprovalConfig;
+  skills?: SkillMetadata[];
+  model: LanguageModel;
+  subagentModel?: LanguageModel;
+  customInstructions?: string;
+  context?: CompactionContext;
+}
+
+export type AgentRuntimeContext = SerializableRuntimeContext | LiveAgentContext;
 
 export const EVICTION_THRESHOLD_BYTES = 80 * 1024;

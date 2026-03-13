@@ -1,32 +1,25 @@
-import type { FetchFunction } from "@ai-sdk/provider-utils";
 import type { UIMessage } from "ai";
-import { DefaultChatTransport } from "ai";
+import {
+  WorkflowChatTransport,
+  type WorkflowChatTransportOptions,
+} from "@workflow/ai";
 
 /**
- * A chat transport that allows aborting ALL active fetch connections,
- * including `reconnectToStream` requests.
+ * A workflow-aware chat transport that allows aborting every active fetch,
+ * including reconnect requests.
  *
- * The AI SDK's `reconnectToStream` does not pass an abort signal to its
- * internal fetch call, so `chatInstance.stop()` cannot cancel resumed
- * streams. This transport wraps every fetch with a transport-level abort
- * signal so that `abort()` reliably tears down any active connection.
- *
- * After `abort()` the transport is immediately reusable — a fresh controller
- * is created so that subsequent fetches are not affected. This makes it safe
- * to call from React effect cleanup (including Strict Mode double-mounts).
+ * WorkflowChatTransport already handles resumable workflow streams; this thin
+ * wrapper only restores the hard-abort behavior the UI depends on for route
+ * teardown and explicit stop actions.
  */
-export class AbortableChatTransport<
+export class AbortableWorkflowChatTransport<
   UI_MESSAGE extends UIMessage = UIMessage,
-> extends DefaultChatTransport<UI_MESSAGE> {
-  private _state: { controller: AbortController };
+> extends WorkflowChatTransport<UI_MESSAGE> {
+  private state: { controller: AbortController };
 
-  constructor(
-    options: ConstructorParameters<typeof DefaultChatTransport<UI_MESSAGE>>[0],
-  ) {
-    // Mutable ref so the fetch wrapper always reads the *current* controller,
-    // even after abort() swaps it out.
+  constructor(options: WorkflowChatTransportOptions<UI_MESSAGE> = {}) {
     const state = { controller: new AbortController() };
-    const outerFetch: FetchFunction = options?.fetch ?? globalThis.fetch;
+    const outerFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
 
     super({
       ...options,
@@ -36,18 +29,14 @@ export class AbortableChatTransport<
           signal: init?.signal
             ? AbortSignal.any([state.controller.signal, init.signal])
             : state.controller.signal,
-        })) as FetchFunction,
+        })) as typeof fetch,
     });
 
-    this._state = state;
+    this.state = state;
   }
 
-  /**
-   * Abort every in-flight fetch made through this transport, then reset
-   * so new requests go through normally.
-   */
   abort(): void {
-    this._state.controller.abort();
-    this._state.controller = new AbortController();
+    this.state.controller.abort();
+    this.state.controller = new AbortController();
   }
 }

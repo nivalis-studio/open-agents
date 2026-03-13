@@ -1,18 +1,43 @@
 import { after } from "next/server";
-import { UI_MESSAGE_STREAM_HEADERS } from "ai";
+import { createUIMessageStreamResponse } from "ai";
+import * as workflowApi from "workflow/api";
 import {
   getChatById,
   getSessionById,
   updateChatActiveStreamId,
 } from "@/lib/db/sessions";
-import { resumableStreamContext } from "@/lib/resumable-stream-context";
 import { getServerSession } from "@/lib/session/get-server-session";
+
+const STREAM_TOKEN_SEPARATOR = ":";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
 };
 
-export async function GET(_request: Request, context: RouteContext) {
+function parseActiveStreamRunId(activeStreamId: string | null): string | null {
+  if (!activeStreamId) {
+    return null;
+  }
+
+  const separatorIndex = activeStreamId.indexOf(STREAM_TOKEN_SEPARATOR);
+  if (separatorIndex <= 0) {
+    return null;
+  }
+
+  const runId = activeStreamId.slice(separatorIndex + 1);
+  return runId || null;
+}
+
+function parseStartIndex(value: string | null): number | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
+export async function GET(request: Request, context: RouteContext) {
   const session = await getServerSession();
   if (!session?.user) {
     return new Response("Not authenticated", { status: 401 });
@@ -25,28 +50,28 @@ export async function GET(_request: Request, context: RouteContext) {
     return new Response("Chat not found", { status: 404 });
   }
 
-  // Verify ownership through the session chain
   const sessionRecord = await getSessionById(chat.sessionId);
   if (!sessionRecord || sessionRecord.userId !== session.user.id) {
     return new Response("Forbidden", { status: 403 });
   }
 
-  if (!chat.activeStreamId) {
+  const runId = parseActiveStreamRunId(chat.activeStreamId);
+  if (!runId) {
     return new Response(null, { status: 204 });
   }
 
-  const stream = await resumableStreamContext.resumeExistingStream(
-    chat.activeStreamId,
+  const startIndex = parseStartIndex(
+    new URL(request.url).searchParams.get("startIndex"),
   );
 
-  if (!stream) {
-    // Stream no longer exists in Redis (expired or finished) — clear the stale
-    // activeStreamId so future page loads don't attempt another resume.
+  try {
+    const run = workflowApi.getRun(runId);
+    const stream = run.getReadable({ startIndex });
+    return createUIMessageStreamResponse({ stream });
+  } catch {
     after(async () => {
       await updateChatActiveStreamId(chatId, null);
     });
     return new Response(null, { status: 204 });
   }
-
-  return new Response(stream, { headers: UI_MESSAGE_STREAM_HEADERS });
 }

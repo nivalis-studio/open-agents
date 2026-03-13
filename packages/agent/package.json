@@ -16,6 +16,7 @@
     "@ai-sdk/anthropic": "catalog:",
     "@ai-sdk/openai": "catalog:",
     "@open-harness/sandbox": "workspace:*",
+    "@workflow/ai": "4.0.1-beta.52",
     "ai": "catalog:",
     "zod": "catalog:"
   },

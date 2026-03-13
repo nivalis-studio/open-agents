@@ -9,6 +9,7 @@ interface TestSessionRecord {
   repoName: string;
   sandboxState: {
     type: "vercel";
+    sandboxId: string;
   };
 }
 
@@ -18,24 +19,46 @@ interface TestChatRecord {
   activeStreamId: string | null;
 }
 
-interface StreamResponseOptions {
-  onFinish: (params: {
-    responseMessage: {
-      id: string;
-      role: "assistant";
-      parts: unknown[];
-    };
-  }) => Promise<void>;
-}
-
 const autoCommitCalls: Array<Record<string, unknown>> = [];
 const backgroundTasks: Promise<void>[] = [];
 const fetchCalls: string[] = [];
+const compareAndSetCalls: Array<[string, string | null, string | null]> = [];
+
+interface WorkflowApiMockState {
+  startCalls: unknown[];
+  getReadableCalls: Array<{ startIndex?: number }>;
+  cancelCalls: string[];
+  shouldThrowOnGetRun: boolean;
+  workflowResult: {
+    persisted: boolean;
+    naturalFinish: boolean;
+    autoCommitEligible: boolean;
+  };
+}
+
+function getWorkflowApiMockState(): WorkflowApiMockState {
+  const existing = Reflect.get(globalThis, "__workflowApiMockState");
+  if (existing) {
+    return existing as WorkflowApiMockState;
+  }
+
+  const initialState: WorkflowApiMockState = {
+    startCalls: [],
+    getReadableCalls: [],
+    cancelCalls: [],
+    shouldThrowOnGetRun: false,
+    workflowResult: {
+      persisted: true,
+      naturalFinish: true,
+      autoCommitEligible: true,
+    },
+  };
+  Reflect.set(globalThis, "__workflowApiMockState", initialState);
+  return initialState;
+}
 
 let sessionRecord: TestSessionRecord;
 let chatRecord: TestChatRecord;
-let shouldTriggerStopBeforeFinish = false;
-let stopCallback: (() => void) | null = null;
 
 const originalFetch = globalThis.fetch;
 
@@ -55,72 +78,53 @@ mock.module("next/server", () => ({
   },
 }));
 
-mock.module("ai", () => ({
-  convertToModelMessages: async (messages: unknown) => messages,
-}));
+mock.module("workflow/api", () => ({
+  start: async (_workflow: unknown, args: unknown[]) => {
+    const state = getWorkflowApiMockState();
+    state.startCalls.push(args[0]);
+    return {
+      runId: "workflow-run-1",
+      readable: new ReadableStream(),
+      returnValue: Promise.resolve(state.workflowResult),
+    };
+  },
+  getRun: (_runId: string) => {
+    const state = getWorkflowApiMockState();
+    if (state.shouldThrowOnGetRun) {
+      throw new Error("missing-run");
+    }
 
-mock.module("@/app/config", () => ({
-  webAgent: {
-    tools: {},
-    stream: async () => {
-      let resolveConsumeStream: (() => void) | null = null;
-
-      return {
-        consumeStream: () =>
-          new Promise<void>((resolve) => {
-            resolveConsumeStream = resolve;
-          }),
-        toUIMessageStreamResponse: async ({
-          onFinish,
-        }: StreamResponseOptions) => {
-          if (shouldTriggerStopBeforeFinish) {
-            stopCallback?.();
-          }
-
-          await onFinish({
-            responseMessage: {
-              id: "assistant-1",
-              role: "assistant",
-              parts: [],
-            },
-          });
-
-          resolveConsumeStream?.();
-          return new Response("ok", { status: 200 });
-        },
-      };
-    },
+    return {
+      getReadable: (options: { startIndex?: number }) => {
+        state.getReadableCalls.push(options);
+        return new ReadableStream();
+      },
+      cancel: async () => {
+        state.cancelCalls.push(_runId);
+      },
+    };
   },
 }));
 
-mock.module("@open-harness/agent", () => ({
-  collectTaskToolUsageEvents: () => [],
-  discoverSkills: async () => [],
-  gateway: () => "mock-model",
-  sumLanguageModelUsage: (_existing: unknown, usage: unknown) => usage,
-}));
-
-mock.module("@open-harness/sandbox", () => ({
-  connectSandbox: async () => ({
-    workingDirectory: "/vercel/sandbox",
-    exec: async () => ({ success: true, stdout: "", stderr: "" }),
-    getState: () => ({
-      type: "vercel" as const,
-      sandboxId: "sandbox-1",
-      expiresAt: Date.now() + 60_000,
-    }),
-  }),
+mock.module("@/app/workflows/chat", () => ({
+  chatWorkflow: async () => {},
 }));
 
 mock.module("@/lib/db/sessions", () => ({
-  compareAndSetChatActiveStreamId: async () => true,
+  compareAndSetChatActiveStreamId: async (
+    chatId: string,
+    expected: string | null,
+    next: string | null,
+  ) => {
+    compareAndSetCalls.push([chatId, expected, next]);
+    return true;
+  },
   createChatMessageIfNotExists: async () => undefined,
   getChatById: async () => chatRecord,
   getSessionById: async () => sessionRecord,
   isFirstChatMessage: async () => false,
   touchChat: async () => {},
   updateChat: async () => {},
-  updateChatAssistantActivity: async () => {},
   updateSession: async (
     _sessionId: string,
     patch: Record<string, unknown>,
@@ -128,11 +132,6 @@ mock.module("@/lib/db/sessions", () => ({
     ...sessionRecord,
     ...patch,
   }),
-  upsertChatMessageScoped: async () => ({ status: "inserted" as const }),
-}));
-
-mock.module("@/lib/db/usage", () => ({
-  recordUsage: async () => {},
 }));
 
 mock.module("@/lib/db/user-preferences", () => ({
@@ -148,19 +147,6 @@ mock.module("@/lib/chat-auto-commit", () => ({
   },
 }));
 
-mock.module("@/lib/github/get-repo-token", () => ({
-  getRepoToken: async () => ({ token: null }),
-}));
-
-mock.module("@/lib/skills-cache", () => ({
-  getCachedSkills: async () => [],
-  setCachedSkills: async () => {},
-}));
-
-mock.module("@/lib/github/user-token", () => ({
-  getUserGitHubToken: async () => null,
-}));
-
 mock.module("@/lib/model-variants", () => ({
   resolveModelSelection: (modelId: string) => ({
     isMissingVariant: false,
@@ -171,16 +157,6 @@ mock.module("@/lib/model-variants", () => ({
 
 mock.module("@/lib/models", () => ({
   DEFAULT_MODEL_ID: "mock-model",
-}));
-
-mock.module("@/lib/resumable-stream-context", () => ({
-  resumableStreamContext: {
-    createNewResumableStream: async () => {},
-  },
-}));
-
-mock.module("@/lib/sandbox/config", () => ({
-  DEFAULT_SANDBOX_PORTS: [],
 }));
 
 mock.module("@/lib/sandbox/lifecycle", () => ({
@@ -199,28 +175,31 @@ mock.module("@/lib/session/get-server-session", () => ({
   }),
 }));
 
-mock.module("@/lib/stop-signal", () => ({
-  onStopSignal: async (_chatId: string, callback: () => void) => {
-    stopCallback = callback;
-    return () => {
-      stopCallback = null;
-    };
-  },
-}));
-
-const routeModulePromise = import("./route");
+async function importRouteModule() {
+  return import(`./route?test=${Math.random()}`);
+}
 
 afterAll(() => {
   globalThis.fetch = originalFetch;
 });
 
-describe("/api/chat auto commit", () => {
+describe("/api/chat workflow execution", () => {
   beforeEach(() => {
+    const workflowApiState = getWorkflowApiMockState();
+
     autoCommitCalls.length = 0;
     backgroundTasks.length = 0;
     fetchCalls.length = 0;
-    shouldTriggerStopBeforeFinish = false;
-    stopCallback = null;
+    compareAndSetCalls.length = 0;
+    workflowApiState.startCalls.length = 0;
+    workflowApiState.getReadableCalls.length = 0;
+    workflowApiState.cancelCalls.length = 0;
+    workflowApiState.shouldThrowOnGetRun = false;
+    workflowApiState.workflowResult = {
+      persisted: true,
+      naturalFinish: true,
+      autoCommitEligible: true,
+    };
 
     sessionRecord = {
       id: "session-1",
@@ -231,6 +210,7 @@ describe("/api/chat auto commit", () => {
       repoName: "repo",
       sandboxState: {
         type: "vercel",
+        sandboxId: "sandbox-1",
       },
     };
 
@@ -241,8 +221,8 @@ describe("/api/chat auto commit", () => {
     };
   });
 
-  test("runs auto commit after a natural finish", async () => {
-    const { POST } = await routeModulePromise;
+  test("starts a workflow, stores active stream ownership, and returns the run id header", async () => {
+    const { POST } = await importRouteModule();
 
     const response = await POST(
       new Request("http://localhost/api/chat", {
@@ -267,7 +247,33 @@ describe("/api/chat auto commit", () => {
 
     await Promise.all(backgroundTasks);
 
+    const workflowApiState = getWorkflowApiMockState();
+
     expect(response.ok).toBe(true);
+    expect(response.headers.get("x-workflow-run-id")).toBe("workflow-run-1");
+    expect(workflowApiState.startCalls).toHaveLength(1);
+    expect(workflowApiState.startCalls[0]).toMatchObject({
+      userId: "user-1",
+      sessionId: "session-1",
+      chatId: "chat-1",
+      repoOwner: "acme",
+      repoName: "repo",
+    });
+    expect(workflowApiState.startCalls[0]).toSatisfy(
+      (value: unknown) =>
+        typeof value === "object" &&
+        value !== null &&
+        typeof Reflect.get(value, "requestStartedAtMs") === "number",
+    );
+
+    expect(compareAndSetCalls).toHaveLength(1);
+    expect(compareAndSetCalls[0]?.[0]).toBe("chat-1");
+    expect(compareAndSetCalls[0]?.[1]).toBeNull();
+    expect(compareAndSetCalls[0]?.[2]).toSatisfy(
+      (value: unknown) =>
+        typeof value === "string" && value.endsWith(":workflow-run-1"),
+    );
+
     expect(autoCommitCalls).toHaveLength(1);
     expect(autoCommitCalls[0]).toMatchObject({
       sessionId: "session-1",
@@ -280,9 +286,14 @@ describe("/api/chat auto commit", () => {
     ]);
   });
 
-  test("skips auto commit when the chat is stopped", async () => {
-    shouldTriggerStopBeforeFinish = true;
-    const { POST } = await routeModulePromise;
+  test("skips follow-up side effects when the workflow does not finish naturally", async () => {
+    getWorkflowApiMockState().workflowResult = {
+      persisted: false,
+      naturalFinish: false,
+      autoCommitEligible: false,
+    };
+
+    const { POST } = await importRouteModule();
 
     const response = await POST(
       new Request("http://localhost/api/chat", {
@@ -309,8 +320,6 @@ describe("/api/chat auto commit", () => {
 
     expect(response.ok).toBe(true);
     expect(autoCommitCalls).toHaveLength(0);
-    expect(fetchCalls).toEqual([
-      "http://localhost/api/sessions/session-1/diff",
-    ]);
+    expect(fetchCalls).toEqual([]);
   });
 });

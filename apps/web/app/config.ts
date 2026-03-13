@@ -1,4 +1,7 @@
-import { openHarnessAgent } from "@open-harness/agent";
+import type { ApprovalConfig } from "@open-harness/agent";
 
-// Configure the agent here - single source of truth for the web app
-export const webAgent = openHarnessAgent;
+export const WEB_AGENT_APPROVAL: ApprovalConfig = {
+  type: "interactive",
+  autoApprove: "all",
+  sessionRules: [],
+};

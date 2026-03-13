@@ -1,16 +1,73 @@
-import type { Sandbox } from "@open-harness/sandbox";
+import { connectSandbox, type Sandbox } from "@open-harness/sandbox";
 import type { LanguageModel, ModelMessage } from "ai";
 import * as path from "path";
-import type { AgentContext, ApprovalConfig, ApprovalRule } from "../types";
+import { createLanguageModelFromDescriptor } from "../models";
+import type {
+  ApprovalConfig,
+  ApprovalRule,
+  AgentRuntimeContext,
+  LiveAgentContext,
+  SerializableRuntimeContext,
+} from "../types";
 
-function isAgentContext(value: unknown): value is AgentContext {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isSandbox(value: unknown): value is Sandbox {
+  return isRecord(value) && typeof value.workingDirectory === "string";
+}
+
+export function isLiveAgentContext(value: unknown): value is LiveAgentContext {
   return (
-    typeof value === "object" &&
-    value !== null &&
+    isRecord(value) &&
     "sandbox" in value &&
+    isSandbox(value.sandbox) &&
     "approval" in value &&
     "model" in value
   );
+}
+
+export function isSerializableRuntimeContext(
+  value: unknown,
+): value is SerializableRuntimeContext {
+  return (
+    isRecord(value) &&
+    typeof value.sandboxId === "string" &&
+    value.sandboxId.length > 0 &&
+    typeof value.workingDirectory === "string" &&
+    value.workingDirectory.length > 0 &&
+    "approval" in value &&
+    "model" in value
+  );
+}
+
+function getContextKeys(value: unknown): string {
+  if (!isRecord(value)) {
+    return "Context is undefined or null";
+  }
+
+  return `Context keys: ${Object.keys(value).join(", ")}`;
+}
+
+function getRuntimeContext(
+  experimental_context: unknown,
+): AgentRuntimeContext | undefined {
+  if (isLiveAgentContext(experimental_context)) {
+    return experimental_context;
+  }
+
+  if (isSerializableRuntimeContext(experimental_context)) {
+    return experimental_context;
+  }
+
+  return undefined;
+}
+
+const sandboxCache = new Map<string, Promise<Sandbox>>();
+
+export function clearSandboxCache(): void {
+  sandboxCache.clear();
 }
 
 /**
@@ -62,31 +119,48 @@ export function toDisplayPath(
 
 /**
  * Get sandbox from experimental context with null safety.
- * Throws a descriptive error if sandbox is not initialized.
- *
- * @param experimental_context - The context passed to tool execute functions
- * @param toolName - Optional tool name for better error messages
- * @returns The sandbox instance
- * @throws Error if sandbox is not available in context
+ * When the context only contains serializable runtime metadata, reconnects the
+ * sandbox lazily from `sandboxId` and caches it process-locally.
  */
-export function getSandbox(
+export async function getSandbox(
   experimental_context: unknown,
   toolName?: string,
-): Sandbox {
-  const context = isAgentContext(experimental_context)
-    ? experimental_context
-    : undefined;
-  if (!context?.sandbox) {
-    const toolInfo = toolName ? ` (tool: ${toolName})` : "";
-    const contextInfo = context
-      ? `Context exists but sandbox is missing. Context keys: ${Object.keys(context).join(", ")}`
-      : "Context is undefined or null";
-    throw new Error(
-      `Sandbox not initialized in context${toolInfo}. ${contextInfo}. ` +
-        "Ensure the agent's prepareCall sets experimental_context: { sandbox, ... }",
-    );
+): Promise<Sandbox> {
+  const context = getRuntimeContext(experimental_context);
+
+  if (isLiveAgentContext(context)) {
+    return context.sandbox;
   }
-  return context.sandbox;
+
+  if (context?.sandboxId) {
+    const cachedSandbox = sandboxCache.get(context.sandboxId);
+    if (cachedSandbox) {
+      return cachedSandbox;
+    }
+
+    const sandboxPromise = connectSandbox({
+      type: context.sandboxType,
+      sandboxId: context.sandboxId,
+      ...(context.expiresAt !== undefined
+        ? { expiresAt: context.expiresAt }
+        : {}),
+    });
+
+    sandboxCache.set(context.sandboxId, sandboxPromise);
+
+    try {
+      return await sandboxPromise;
+    } catch (error) {
+      sandboxCache.delete(context.sandboxId);
+      throw error;
+    }
+  }
+
+  const toolInfo = toolName ? ` (tool: ${toolName})` : "";
+  throw new Error(
+    `Sandbox not initialized in context${toolInfo}. ${getContextKeys(experimental_context)}. ` +
+      "Ensure the agent runtime provides either a live sandbox or serializable sandbox metadata.",
+  );
 }
 
 /**
@@ -105,34 +179,18 @@ export function shouldAutoApprove(
 }
 
 /**
- * Get the full approval context from experimental_context.
- * Used by needsApproval functions to access approval configuration.
- *
- * @param experimental_context - The context passed to needsApproval functions
- * @param toolName - Optional tool name for better error messages
- * @returns Object with sandbox, workingDirectory, and approval config
+ * Get the approval context from experimental_context.
+ * Used by needsApproval functions to access approval configuration and the
+ * serialized working directory without requiring a live sandbox connection.
  */
 export function getApprovalContext(
   experimental_context: unknown,
   toolName?: string,
 ): {
-  sandbox: Sandbox;
   workingDirectory: string;
   approval: ApprovalConfig;
 } {
-  const context = isAgentContext(experimental_context)
-    ? experimental_context
-    : undefined;
-  if (!context?.sandbox) {
-    const toolInfo = toolName ? ` (tool: ${toolName})` : "";
-    const contextInfo = context
-      ? `Context exists but sandbox is missing. Context keys: ${Object.keys(context).join(", ")}`
-      : "Context is undefined or null";
-    throw new Error(
-      `Approval context not initialized${toolInfo}. ${contextInfo}. ` +
-        "Ensure the agent's prepareCall sets experimental_context: { sandbox, ... }",
-    );
-  }
+  const context = getRuntimeContext(experimental_context);
 
   // Default to interactive mode with no auto-approve if approval config is missing
   const defaultApproval: ApprovalConfig = {
@@ -141,35 +199,50 @@ export function getApprovalContext(
     sessionRules: [],
   };
 
-  return {
-    sandbox: context.sandbox,
-    workingDirectory: context.sandbox.workingDirectory,
-    approval: context.approval ?? defaultApproval,
-  };
+  if (isLiveAgentContext(context)) {
+    return {
+      workingDirectory: context.sandbox.workingDirectory,
+      approval: context.approval ?? defaultApproval,
+    };
+  }
+
+  if (isSerializableRuntimeContext(context)) {
+    return {
+      workingDirectory: context.workingDirectory,
+      approval: context.approval ?? defaultApproval,
+    };
+  }
+
+  const toolInfo = toolName ? ` (tool: ${toolName})` : "";
+  throw new Error(
+    `Approval context not initialized${toolInfo}. ${getContextKeys(experimental_context)}. ` +
+      "Ensure the agent runtime provides workingDirectory and approval metadata.",
+  );
 }
 
 /**
  * Get model from experimental context with null safety.
- * Throws a descriptive error if model is not initialized.
+ * Reconstructs the model from a serializable descriptor when needed.
  */
 export function getModel(
   experimental_context: unknown,
   toolName?: string,
 ): LanguageModel {
-  const context = isAgentContext(experimental_context)
-    ? experimental_context
-    : undefined;
-  if (!context?.model) {
-    const toolInfo = toolName ? ` (tool: ${toolName})` : "";
-    const contextInfo = context
-      ? `Context exists but model is missing. Context keys: ${Object.keys(context).join(", ")}`
-      : "Context is undefined or null";
-    throw new Error(
-      `Model not initialized in context${toolInfo}. ${contextInfo}. ` +
-        "Ensure the agent's prepareCall sets experimental_context: { model, ... }",
-    );
+  const context = getRuntimeContext(experimental_context);
+
+  if (isLiveAgentContext(context) && context.model) {
+    return context.model;
   }
-  return context.model;
+
+  if (isSerializableRuntimeContext(context) && context.model) {
+    return createLanguageModelFromDescriptor(context.model);
+  }
+
+  const toolInfo = toolName ? ` (tool: ${toolName})` : "";
+  throw new Error(
+    `Model not initialized in context${toolInfo}. ${getContextKeys(experimental_context)}. ` +
+      "Ensure the agent runtime provides either a live model or model descriptor.",
+  );
 }
 
 /**
@@ -180,17 +253,29 @@ export function getSubagentModel(
   experimental_context: unknown,
   toolName?: string,
 ): LanguageModel {
-  const context = isAgentContext(experimental_context)
-    ? experimental_context
-    : undefined;
-  if (!context?.model) {
-    const toolInfo = toolName ? ` (tool: ${toolName})` : "";
-    throw new Error(
-      `Model not initialized in context${toolInfo}. ` +
-        "Ensure the agent's prepareCall sets experimental_context: { model, ... }",
+  const context = getRuntimeContext(experimental_context);
+
+  if (isLiveAgentContext(context)) {
+    if (!context.model) {
+      const toolInfo = toolName ? ` (tool: ${toolName})` : "";
+      throw new Error(
+        `Model not initialized in context${toolInfo}. Ensure the agent runtime provides a model.`,
+      );
+    }
+    return context.subagentModel ?? context.model;
+  }
+
+  if (isSerializableRuntimeContext(context)) {
+    return createLanguageModelFromDescriptor(
+      context.subagentModel ?? context.model,
     );
   }
-  return context.subagentModel ?? context.model;
+
+  const toolInfo = toolName ? ` (tool: ${toolName})` : "";
+  throw new Error(
+    `Model not initialized in context${toolInfo}. ${getContextKeys(experimental_context)}. ` +
+      "Ensure the agent runtime provides either a live model or model descriptor.",
+  );
 }
 
 /**
@@ -354,27 +439,27 @@ export function pathNeedsApproval(options: PathApprovalOptions): boolean {
 
     // Inside working directory but autoApprove doesn't cover edits
     return true;
-  } else {
-    // Read-only tools: inside working directory = auto-approve
-    if (isInsideWorkingDir) {
-      return false;
-    }
-
-    // Outside working directory: check session rules
-    if (
-      pathMatchesApprovalRule(
-        filePath,
-        tool,
-        workingDirectory,
-        approval.sessionRules,
-      )
-    ) {
-      return false;
-    }
-
-    // Outside working directory without matching rule = needs approval
-    return true;
   }
+
+  // Read-only tools: inside working directory = auto-approve
+  if (isInsideWorkingDir) {
+    return false;
+  }
+
+  // Outside working directory: check session rules
+  if (
+    pathMatchesApprovalRule(
+      filePath,
+      tool,
+      workingDirectory,
+      approval.sessionRules,
+    )
+  ) {
+    return false;
+  }
+
+  // Outside working directory without matching rule = needs approval
+  return true;
 }
 
 /**

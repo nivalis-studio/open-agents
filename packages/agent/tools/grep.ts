@@ -84,7 +84,8 @@ EXAMPLES:
       { pattern, path: searchPath, glob, caseSensitive = true },
       { experimental_context },
     ) => {
-      const sandbox = getSandbox(experimental_context, "grep");
+      "use step";
+      const sandbox = await getSandbox(experimental_context, "grep");
       const workingDirectory = sandbox.workingDirectory;
 
       try {
@@ -141,19 +142,13 @@ EXAMPLES:
           if (matches.length >= maxTotal) break;
 
           // grep -rn output format: file:line:content
-          // Use last-known-good parsing: find first colon after the path
-          // For absolute paths like /vercel/sandbox/file.ts:10:content,
-          // we need to handle the colon after the path correctly
           const nulIndex = line.indexOf("\0");
           let file: string;
           let rest: string;
           if (nulIndex !== -1) {
-            // NUL-separated format (if --null was used)
             file = line.slice(0, nulIndex);
             rest = line.slice(nulIndex + 1);
           } else {
-            // Colon-separated: find the line number portion (file:LINE_NUM:content)
-            // Match the pattern ":digits:" to separate file path from line number
             const match = line.match(/:(\d+):/);
             if (!match || match.index === undefined) continue;
             file = line.slice(0, match.index);
@@ -188,7 +183,6 @@ EXAMPLES:
           matches,
         };
 
-        // Include debug info when no results found to aid diagnosis
         if (matches.length === 0) {
           response._debug = {
             command,

@@ -197,14 +197,14 @@ Changes:
   - If a different workflow-native stop mechanism is introduced, update or remove this module accordingly.
 
 Implementation order:
-1. Introduce shared tool exports and serializable runtime types in `packages/agent`.
-2. Convert the main agent and subagents to DurableAgent factories.
-3. Update tool utilities and tool execution paths to reconnect from `sandboxId`.
-4. Decouple web/CLI typing from runtime agent singletons.
-5. Add the web chat workflow and switch the POST route to workflow execution.
-6. Switch reconnect logic and client transport to `WorkflowChatTransport`.
-7. Remove resumable-stream Redis code and update tests.
-8. Verify message metadata, stop behavior, and task/subagent UI parity before merge.
+- [x] Introduce shared tool exports and serializable runtime types in `packages/agent`.
+- [x] Convert the main agent and subagents to DurableAgent factories.
+- [x] Update tool utilities and tool execution paths to reconnect from `sandboxId`.
+- [x] Decouple web/CLI typing from runtime agent singletons.
+- [x] Add the web chat workflow and switch the POST route to workflow execution.
+- [x] Switch reconnect logic and client transport to `WorkflowChatTransport`.
+- [x] Remove resumable-stream Redis code and update tests.
+- [x] Verify message metadata, stop behavior, and task/subagent UI parity before merge.
 
 Verification:
 - Automated checks:

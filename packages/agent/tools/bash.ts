@@ -122,21 +122,18 @@ const DANGEROUS_COMMAND_PATTERNS = [
 export function commandNeedsApproval(command: string): boolean {
   const trimmedCommand = command.trim();
 
-  // Check for dangerous patterns first
   for (const pattern of DANGEROUS_COMMAND_PATTERNS) {
     if (pattern.test(trimmedCommand)) {
       return true;
     }
   }
 
-  // Check if it starts with a safe command
   for (const prefix of SAFE_COMMAND_PREFIXES) {
     if (trimmedCommand.startsWith(prefix)) {
       return false;
     }
   }
 
-  // Default to requiring approval for unknown commands
   return true;
 }
 
@@ -146,37 +143,29 @@ export const bashTool = (options?: ToolOptions) =>
       const ctx = getApprovalContext(experimental_context, "bash");
       const { approval } = ctx;
 
-      // Background and delegated modes auto-approve all operations
       if (shouldAutoApprove(approval)) {
         return false;
       }
 
-      // Type guard narrowed approval to interactive mode
-      // Check if command matches any saved session rules
       if (commandMatchesApprovalRule(args.command, approval.sessionRules)) {
         return false;
       }
 
-      // Need approval if cwd is outside working directory
       if (cwdIsOutsideWorkingDirectory(args.cwd, ctx.workingDirectory)) {
         return true;
       }
 
-      // Auto-approve all bash commands when autoApprove is "all"
       if (approval.autoApprove === "all") {
         return false;
       }
 
-      // Check command safety
       if (commandNeedsApproval(args.command)) {
-        // If command is dangerous, check user's approval setting
         if (typeof options?.needsApproval === "function") {
           return options.needsApproval(args);
         }
         return options?.needsApproval ?? true;
       }
 
-      // Command is safe - no approval needed
       return false;
     },
     description: `Execute a bash command in the user's shell (non-interactive).
@@ -201,7 +190,7 @@ USAGE:
 - Combined stdout/stderr output is truncated after ~50,000 characters
 
 DO NOT USE FOR:
-- File reading (cat, head, tail) - use readFileTool
+- File reading (cat, head, tail) - use readFileTool instead)
 - File editing (sed, awk, editors) - use editFileTool / writeFileTool
 - File creation (touch, redirections like >, >>) - use writeFileTool
 - Code search (grep, rg, ag) - use grepTool
@@ -220,17 +209,16 @@ EXAMPLES:
 - Start a dev server: command: "npm run dev", detached: true`,
     inputSchema: bashInputSchema,
     execute: async ({ command, cwd, detached }, { experimental_context }) => {
-      const sandbox = getSandbox(experimental_context, "bash");
+      "use step";
+      const sandbox = await getSandbox(experimental_context, "bash");
       const workingDirectory = sandbox.workingDirectory;
 
-      // Resolve the working directory
       const workingDir = cwd
         ? path.isAbsolute(cwd)
           ? cwd
           : path.resolve(workingDirectory, cwd)
         : workingDirectory;
 
-      // Detached mode: start the command in the background and return immediately
       if (detached) {
         if (!sandbox.execDetached) {
           return {

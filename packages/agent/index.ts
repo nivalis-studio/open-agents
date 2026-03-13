@@ -1,11 +1,25 @@
-export { type GatewayConfig, type GatewayOptions, gateway } from "./models";
-export type { OpenHarnessAgentCallOptions } from "./open-harness-agent";
 export {
+  createLanguageModelFromDescriptor,
+  createModelDescriptor,
+  type GatewayConfig,
+  type GatewayOptions,
+  gateway,
+  type ModelDescriptor,
+  modelDescriptorSchema,
+  type ProviderOptionsByProvider,
+} from "./models";
+export type {
+  OpenHarnessDurableCallOptions,
+  OpenHarnessLocalCallOptions,
+} from "./open-harness-agent";
+export {
+  createOpenHarnessAgent,
+  createOpenHarnessDurableAgent,
   defaultModel,
   defaultModelLabel,
   extractTodosFromStep,
-  openHarnessAgent,
 } from "./open-harness-agent";
+export { openHarnessTools, type OpenHarnessToolSet } from "./toolset";
 // Skills exports
 export { discoverSkills, parseSkillFrontmatter } from "./skills/discovery";
 export { extractSkillBody, substituteArguments } from "./skills/loader";
@@ -37,8 +51,20 @@ export type {
 export type {
   ApprovalConfig,
   ApprovalRule,
+  CompactionContext,
+  LiveAgentContext,
+  SandboxRuntimeMetadata,
+  SerializableRuntimeContext,
   TodoItem,
   TodoStatus,
+} from "./types";
+export {
+  approvalConfigSchema,
+  approvalRuleSchema,
+  compactionContextSchema,
+  serializableRuntimeContextSchema,
+  todoItemSchema,
+  todoStatusSchema,
 } from "./types";
 export {
   addLanguageModelUsage,

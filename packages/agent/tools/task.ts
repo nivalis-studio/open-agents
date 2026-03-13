@@ -1,20 +1,29 @@
 import {
+  readUIMessageStream,
   tool,
+  type LanguageModelUsage,
   type ModelMessage,
   type UIToolInvocation,
-  type LanguageModelUsage,
+  type UIMessageChunk,
 } from "ai";
 import { z } from "zod";
-import { executorSubagent } from "../subagents/executor";
-import { explorerSubagent } from "../subagents/explorer";
-import type { ApprovalRule } from "../types";
+import {
+  createExecutorDurableSubagent,
+  createExecutorSubagent,
+} from "../subagents/executor";
+import {
+  createExplorerDurableSubagent,
+  createExplorerSubagent,
+} from "../subagents/explorer";
+import type { ApprovalRule, SerializableRuntimeContext } from "../types";
+import { sumLanguageModelUsage } from "../usage";
 import {
   getApprovalContext,
   getSubagentModel,
   getSandbox,
+  isSerializableRuntimeContext,
   shouldAutoApprove,
 } from "./utils";
-import { sumLanguageModelUsage } from "../usage";
 
 const subagentTypeSchema = z.enum(["explorer", "executor"]);
 
@@ -52,9 +61,6 @@ export const taskOutputSchema = z.object({
 
 export type TaskToolOutput = z.infer<typeof taskOutputSchema>;
 
-/**
- * Check if a subagent type matches any approval rules.
- */
 function subagentMatchesApprovalRule(
   subagentType: string,
   approvalRules: ApprovalRule[],
@@ -69,30 +75,164 @@ function subagentMatchesApprovalRule(
   return false;
 }
 
+function buildSubagentPrompt(
+  task: string,
+  instructions: string,
+): ModelMessage[] {
+  return [
+    {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `Complete this task and provide a summary of what you accomplished.
+
+## Your Task
+${task}
+
+## Detailed Instructions
+${instructions}`,
+        },
+      ],
+    },
+  ];
+}
+
+function getDurableSubagentContext(
+  context: SerializableRuntimeContext,
+): SerializableRuntimeContext {
+  return {
+    ...context,
+    approval: { type: "delegated" },
+    model: context.subagentModel ?? context.model,
+    subagentModel: undefined,
+  };
+}
+
+async function* runDurableSubagent(options: {
+  subagentType: z.infer<typeof subagentTypeSchema>;
+  task: string;
+  instructions: string;
+  runtimeContext: SerializableRuntimeContext;
+  abortSignal?: AbortSignal;
+}): AsyncGenerator<TaskToolOutput, TaskToolOutput, void> {
+  const runtimeContext = getDurableSubagentContext(options.runtimeContext);
+  const subagentModelId = runtimeContext.model.modelId;
+  const startedAt = Date.now();
+  let toolCallCount = 0;
+  let pending: TaskPendingToolCall | undefined;
+  let usage: LanguageModelUsage | undefined;
+  const seenToolCallIds = new Set<string>();
+  const toolNamesById = new Map<string, string>();
+
+  const stream = new TransformStream<UIMessageChunk>();
+  const subagent =
+    options.subagentType === "explorer"
+      ? createExplorerDurableSubagent(runtimeContext)
+      : createExecutorDurableSubagent(runtimeContext);
+
+  const resultPromise = subagent.stream({
+    messages: buildSubagentPrompt(options.task, options.instructions),
+    writable: stream.writable,
+    abortSignal: options.abortSignal,
+    collectUIMessages: true,
+    onStepFinish: ({ usage: stepUsage }) => {
+      usage = sumLanguageModelUsage(usage, stepUsage);
+    },
+  });
+
+  yield { toolCallCount, startedAt, modelId: subagentModelId };
+
+  const messageStream = readUIMessageStream({ stream: stream.readable });
+
+  for await (const message of messageStream) {
+    const lastMessage = message;
+    if (lastMessage.role !== "assistant") {
+      continue;
+    }
+
+    const lastToolPart = [...lastMessage.parts]
+      .reverse()
+      .find(
+        (
+          part,
+        ): part is Extract<
+          (typeof lastMessage.parts)[number],
+          { type: string }
+        > => part.type.startsWith("tool-"),
+      );
+
+    if (!lastToolPart || !("toolCallId" in lastToolPart)) {
+      continue;
+    }
+
+    const toolCallId = lastToolPart.toolCallId;
+    if (typeof toolCallId !== "string") {
+      continue;
+    }
+
+    const toolName =
+      "toolName" in lastToolPart && typeof lastToolPart.toolName === "string"
+        ? lastToolPart.toolName
+        : toolNamesById.get(toolCallId);
+
+    if (toolName) {
+      toolNamesById.set(toolCallId, toolName);
+    }
+
+    if (!seenToolCallIds.has(toolCallId)) {
+      seenToolCallIds.add(toolCallId);
+      toolCallCount += 1;
+    }
+
+    if (toolName) {
+      const input =
+        "input" in lastToolPart && lastToolPart.input !== undefined
+          ? lastToolPart.input
+          : pending?.input;
+      pending = { name: toolName, input };
+      yield {
+        pending,
+        toolCallCount,
+        usage,
+        startedAt,
+        modelId: subagentModelId,
+      };
+    }
+  }
+
+  const result = await resultPromise;
+  const finalUsage = result.steps.reduce<LanguageModelUsage | undefined>(
+    (currentUsage, step) => sumLanguageModelUsage(currentUsage, step.usage),
+    usage,
+  );
+
+  return {
+    final: result.messages,
+    toolCallCount,
+    usage: finalUsage,
+    startedAt,
+    modelId: subagentModelId,
+  };
+}
+
 export const taskTool = tool({
-  // Executor subagent has full write access, so require approval
-  // Explorer is read-only, so no approval needed
   needsApproval: ({ subagentType }, { experimental_context }) => {
     const ctx = getApprovalContext(experimental_context, "task");
     const { approval } = ctx;
 
-    // Explorer never needs approval
     if (subagentType !== "executor") {
       return false;
     }
 
-    // Background and delegated modes auto-approve
     if (shouldAutoApprove(approval)) {
       return false;
     }
 
-    // Type guard narrowed approval to interactive mode
-    // Check if a session rule matches this subagent type
     if (subagentMatchesApprovalRule(subagentType, approval.sessionRules)) {
       return false;
     }
 
-    // Default: executor needs approval
     return true;
   },
   description: `Launch a specialized subagent to handle complex tasks autonomously.
@@ -149,12 +289,34 @@ NOTE: The executor subagent requires user approval before running because it has
     { subagentType, task, instructions },
     { experimental_context, abortSignal },
   ) {
-    const sandbox = getSandbox(experimental_context, "task");
+    "use step";
+    if (isSerializableRuntimeContext(experimental_context)) {
+      const generator = runDurableSubagent({
+        subagentType,
+        task,
+        instructions,
+        runtimeContext: experimental_context,
+        abortSignal,
+      });
+
+      while (true) {
+        const result = await generator.next();
+        if (result.done) {
+          yield result.value;
+          return;
+        }
+        yield result.value;
+      }
+    }
+
+    const sandbox = await getSandbox(experimental_context, "task");
     const model = getSubagentModel(experimental_context, "task");
     const subagentModelId = typeof model === "string" ? model : model.modelId;
 
     const subagent =
-      subagentType === "explorer" ? explorerSubagent : executorSubagent;
+      subagentType === "explorer"
+        ? createExplorerSubagent()
+        : createExecutorSubagent();
 
     const result = await subagent.stream({
       prompt:
@@ -168,7 +330,6 @@ NOTE: The executor subagent requires user approval before running because it has
     let pending: TaskPendingToolCall | undefined;
     let usage: LanguageModelUsage | undefined;
 
-    // Emit an initial state so UIs can show elapsed time from a stable timestamp.
     yield { toolCallCount, startedAt, modelId: subagentModelId };
 
     for await (const part of result.fullStream) {
@@ -186,8 +347,6 @@ NOTE: The executor subagent requires user approval before running because it has
 
       if (part.type === "finish-step") {
         usage = sumLanguageModelUsage(usage, part.usage);
-        // Keep the last observed tool call in interim updates so task UIs don't
-        // flicker back to an initializing state between subagent steps.
         yield {
           pending,
           toolCallCount,

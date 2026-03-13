@@ -1,10 +1,10 @@
 import type { ApprovalConfig } from "@open-harness/agent";
-import { openHarnessAgent } from "@open-harness/agent";
+import { createOpenHarnessAgent } from "@open-harness/agent";
 import type { Sandbox } from "@open-harness/sandbox";
 import type { TUIAgentCallOptions } from "./types";
 
 // Configure your agent here - this is the single source of truth for the TUI
-export const tuiAgent = openHarnessAgent;
+export const tuiAgent = createOpenHarnessAgent();
 export const pasteCollapseLineThreshold = 5;
 
 // Default approval config for interactive mode
