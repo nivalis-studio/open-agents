@@ -7,7 +7,7 @@
     max-width: 700px;
     margin: 40px auto;
     font-size: 15px;
-    line-height: 1.5;
+    line-height: 1.8;
     padding: 0 20px;
   }
   #content {
@@ -40,33 +40,27 @@
 <button onclick="copyContent()">Copy for Slack</button>
 <br><br>
 
-<div id="content">
-
-<b>Cooked</b>
-<ul>
-<li>Shipped ~25 PRs on Open Harness this week, highlights below</li>
-<li>Unified all tool renderers with a new <a href="https://github.com/vercel-labs/open-harness/pull/419">ToolLayout component</a>, plus added a <a href="https://github.com/vercel-labs/open-harness/pull/421">skill renderer</a> for tool call UI</li>
-<li>Added <a href="https://github.com/vercel-labs/open-harness/pull/435">reasoning group support</a> for AI thinking blocks and <a href="https://github.com/vercel-labs/open-harness/pull/436">fixed the thinking UI flash</a> during streaming</li>
-<li>Implemented <a href="https://github.com/vercel-labs/open-harness/pull/430">auto-commit with background push scheduling</a> and a <a href="https://github.com/vercel-labs/open-harness/pull/356">shared git flow client</a></li>
-<li>Added <a href="https://github.com/vercel-labs/open-harness/pull/418">repository grouping in the sidebar</a>, <a href="https://github.com/vercel-labs/open-harness/pull/399">default diff mode preferences</a>, and <a href="https://github.com/vercel-labs/open-harness/pull/398">session dropdown timestamp alignment</a></li>
-<li><a href="https://github.com/vercel-labs/open-harness/pull/424">KV-based caching</a> for skills discovery</li>
-<li>Rendered <a href="https://github.com/vercel-labs/open-harness/pull/423">interrupted badges inline</a> in tool headers, added <a href="https://github.com/vercel-labs/open-harness/pull/431">exit codes to bash output</a>, and a <a href="https://github.com/vercel-labs/open-harness/pull/433">"View PR" button</a> in session chat</li>
-<li>Removed legacy <a href="https://github.com/vercel-labs/open-harness/pull/425">hybrid sandbox type</a> and <a href="https://github.com/vercel-labs/open-harness/pull/429">just-bash web app sandbox</a> support</li>
-<li>Fixed <a href="https://github.com/vercel-labs/open-harness/pull/411">GPT-5.4 reasoning sanitization</a> before agent calls, hardened <a href="https://github.com/vercel-labs/open-harness/pull/413">CI to checkout PR source branches</a></li>
-<li>Opened a <a href="https://github.com/vercel/ai/pull/13210">fix on AI SDK</a> for normalizing encrypted reasoning metadata on split reasoning parts</li>
-</ul>
-
-<b>In Cook</b>
-<ul>
-<li>Migrating Open Harness web chat to <a href="https://github.com/vercel-labs/open-harness/pull/417">durable agent workflows</a> — the big effort this week</li>
-<li>Prototyped the full approach in a personal repo: overhauled <a href="https://github.com/nicoalbanese/ai-sdk-tool-loop-agent-workflow/pull/5">workflow implementation</a> with persistence, aborting, and resumability</li>
-<li>Opened PRs upstream on vercel/workflow for <a href="https://github.com/vercel/workflow/pull/1303">prepareStep support</a> and <a href="https://github.com/vercel/workflow/pull/1302">DurableAgent UI message type helpers</a></li>
-<li>Opened a PR on vercel/sandbox for <a href="https://github.com/vercel/sandbox/pull/81">sandboxId-first top-level operations</a></li>
-<li>Main <a href="https://github.com/vercel-labs/open-harness/pull/440">migration draft PR</a> is up on Open Harness along with <a href="https://github.com/vercel-labs/open-harness/pull/420">prep work</a> for serializable call options and stateless sandbox execution</li>
-<li>Next up: <a href="https://github.com/nicoalbanese/ai-sdk-tool-loop-agent-workflow/pull/8">refactoring chat streaming</a> to use workflow-based readable streams</li>
-</ul>
-
-</div>
+<div id="content"><b>Cooked</b>
+<br>
+<br>• Shipped ~25 PRs on Open Harness this week, highlights below
+<br>• Unified all tool renderers with a new <a href="https://github.com/vercel-labs/open-harness/pull/419">ToolLayout component</a>, plus added a <a href="https://github.com/vercel-labs/open-harness/pull/421">skill renderer</a> for tool call UI
+<br>• Added <a href="https://github.com/vercel-labs/open-harness/pull/435">reasoning group support</a> for AI thinking blocks and <a href="https://github.com/vercel-labs/open-harness/pull/436">fixed the thinking UI flash</a> during streaming
+<br>• Implemented <a href="https://github.com/vercel-labs/open-harness/pull/430">auto-commit with background push scheduling</a> and a <a href="https://github.com/vercel-labs/open-harness/pull/356">shared git flow client</a>
+<br>• Added <a href="https://github.com/vercel-labs/open-harness/pull/418">repository grouping in the sidebar</a>, <a href="https://github.com/vercel-labs/open-harness/pull/399">default diff mode preferences</a>, and <a href="https://github.com/vercel-labs/open-harness/pull/398">session dropdown timestamp alignment</a>
+<br>• <a href="https://github.com/vercel-labs/open-harness/pull/424">KV-based caching</a> for skills discovery
+<br>• Rendered <a href="https://github.com/vercel-labs/open-harness/pull/423">interrupted badges inline</a> in tool headers, added <a href="https://github.com/vercel-labs/open-harness/pull/431">exit codes to bash output</a>, and a <a href="https://github.com/vercel-labs/open-harness/pull/433">"View PR" button</a> in session chat
+<br>• Removed legacy <a href="https://github.com/vercel-labs/open-harness/pull/425">hybrid sandbox type</a> and <a href="https://github.com/vercel-labs/open-harness/pull/429">just-bash web app sandbox</a> support
+<br>• Fixed <a href="https://github.com/vercel-labs/open-harness/pull/411">GPT-5.4 reasoning sanitization</a> before agent calls, hardened <a href="https://github.com/vercel-labs/open-harness/pull/413">CI to checkout PR source branches</a>
+<br>• Opened a <a href="https://github.com/vercel/ai/pull/13210">fix on AI SDK</a> for normalizing encrypted reasoning metadata on split reasoning parts
+<br>
+<br><b>In Cook</b>
+<br>
+<br>• Migrating Open Harness web chat to <a href="https://github.com/vercel-labs/open-harness/pull/417">durable agent workflows</a> — the big effort this week
+<br>• Prototyped the full approach in a personal repo: overhauled <a href="https://github.com/nicoalbanese/ai-sdk-tool-loop-agent-workflow/pull/5">workflow implementation</a> with persistence, aborting, and resumability
+<br>• Opened PRs upstream on vercel/workflow for <a href="https://github.com/vercel/workflow/pull/1303">prepareStep support</a> and <a href="https://github.com/vercel/workflow/pull/1302">DurableAgent UI message type helpers</a>
+<br>• Opened a PR on vercel/sandbox for <a href="https://github.com/vercel/sandbox/pull/81">sandboxId-first top-level operations</a>
+<br>• Main <a href="https://github.com/vercel-labs/open-harness/pull/440">migration draft PR</a> is up on Open Harness along with <a href="https://github.com/vercel-labs/open-harness/pull/420">prep work</a> for serializable call options and stateless sandbox execution
+<br>• Next up: <a href="https://github.com/nicoalbanese/ai-sdk-tool-loop-agent-workflow/pull/8">refactoring chat streaming</a> to use workflow-based readable streams</div>
 
 <script>
 function copyContent() {
