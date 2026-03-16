@@ -82,6 +82,14 @@ Web -> Agent (packages/agent) -> Sandbox (packages/sandbox)
 
 See [Architecture & Workspace Structure](docs/agents/architecture.md) for details.
 
+## File Organization & Separation of Concerns
+
+- Do **not** append new functionality to the bottom of an existing file by default.
+- Before adding code, decide whether the behavior is a separate concern that should live in its own file.
+- Prefer creating a new colocated file for distinct concerns (components, hooks, utilities, schemas, data-access helpers, etc.).
+- If a file is already large or handling multiple responsibilities, extract the new logic (and related helpers/types) into focused modules and import them.
+- Keep each file focused on one primary responsibility; avoid mixing unrelated UI, business logic, and data-access code in the same file.
+
 ## Code Style (Summary)
 
 - **Bun exclusively** (not Node/npm/pnpm)
