@@ -13,6 +13,10 @@ const runChatAgentStepCalls: Array<{
   originalMessages: WebAgentUIMessage[];
   assistantId: string;
 }> = [];
+const sendFinishCalls: Array<{
+  finishReason: string;
+  metadata: unknown;
+}> = [];
 const sendStartCalls: string[] = [];
 let stepResults: ChatAgentStepResult[] = [];
 
@@ -88,7 +92,9 @@ mock.module("./chat-steps", () => ({
     return nextStepResult;
   },
   sendError: async () => undefined,
-  sendFinish: async () => undefined,
+  sendFinish: async (finishReason: string, metadata: unknown) => {
+    sendFinishCalls.push({ finishReason, metadata });
+  },
   sendStart: async (messageId: string) => {
     sendStartCalls.push(messageId);
   },
@@ -102,6 +108,7 @@ describe("chat workflow originalMessages handling", () => {
     finalizeCalls.length = 0;
     hasChatStreamOwnershipCalls.length = 0;
     runChatAgentStepCalls.length = 0;
+    sendFinishCalls.length = 0;
     sendStartCalls.length = 0;
     stepResults = [];
   });
@@ -198,6 +205,30 @@ describe("chat workflow originalMessages handling", () => {
       {
         chatId: "chat-1",
         ownedStreamToken: "stream-token-1",
+      },
+    ]);
+    expect(sendFinishCalls).toEqual([
+      {
+        finishReason: "stop",
+        metadata: {
+          lastStepUsage: createUsage(2),
+          totalMessageUsage: {
+            inputTokens: 3,
+            outputTokens: 3,
+            totalTokens: 6,
+            reasoningTokens: 0,
+            cachedInputTokens: 0,
+            inputTokenDetails: {
+              noCacheTokens: 0,
+              cacheReadTokens: 0,
+              cacheWriteTokens: 0,
+            },
+            outputTokenDetails: {
+              textTokens: 3,
+              reasoningTokens: 0,
+            },
+          },
+        },
       },
     ]);
     expect(finalizeCalls).toEqual([

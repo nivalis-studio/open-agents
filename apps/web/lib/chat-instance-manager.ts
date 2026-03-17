@@ -12,6 +12,7 @@ type ManagedChatInstance = {
 
 type AbortableTransport = {
   abort: () => void;
+  reset?: () => void;
 };
 
 function isAbortableTransport(value: unknown): value is AbortableTransport {
@@ -63,6 +64,15 @@ export function abortChatInstanceTransport(chatId: string): void {
   }
 
   managed.transport.abort();
+}
+
+export function resetChatInstanceTransport(chatId: string): void {
+  const managed = chatInstances.get(chatId);
+  if (!managed || !isAbortableTransport(managed.transport)) {
+    return;
+  }
+
+  managed.transport.reset?.();
 }
 
 export function removeChatInstance(chatId: string): void {

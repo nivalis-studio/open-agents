@@ -11,7 +11,7 @@ import {
 import { getWritable } from "workflow";
 import { claimStreamOwnership } from "@/app/api/chat/_lib/stream-lifecycle";
 import type { WebAgentMessageMetadata, WebAgentUIMessage } from "@/app/types";
-import { mergeLanguageModelUsage } from "./chat-shared";
+import { hasRenderableAssistantPart } from "@/lib/chat-streaming-state";
 import {
   compareAndSetChatActiveStreamId,
   getChatById,
@@ -22,6 +22,11 @@ import {
 } from "@/lib/db/sessions";
 import { recordUsage } from "@/lib/db/usage";
 import { buildActiveLifecycleUpdate } from "@/lib/sandbox/lifecycle";
+import { mergeLanguageModelUsage } from "./chat-shared";
+import {
+  type ActiveSessionRecord,
+  createWorkflowChatRuntime,
+} from "./chat-runtime";
 
 const cachedInputTokensFor = (usage: LanguageModelUsage) =>
   usage.inputTokenDetails?.cacheReadTokens ?? usage.cachedInputTokens ?? 0;
@@ -66,85 +71,6 @@ export async function hasChatStreamOwnership(
 
   const chat = await getChatById(chatId);
   return chat?.activeStreamId === ownedStreamToken;
-}
-
-type ActiveSessionRecord = NonNullable<
-  Awaited<ReturnType<typeof getSessionById>>
-> & {
-  sandboxState: NonNullable<
-    NonNullable<Awaited<ReturnType<typeof getSessionById>>>["sandboxState"]
-  >;
-};
-
-async function resolveGitHubToken(
-  userId: string,
-  sessionRecord: ActiveSessionRecord,
-): Promise<string | null> {
-  const [{ getRepoToken }, { getUserGitHubToken }] = await Promise.all([
-    import("@/lib/github/get-repo-token"),
-    import("@/lib/github/user-token"),
-  ]);
-
-  if (sessionRecord.repoOwner) {
-    try {
-      const tokenResult = await getRepoToken(userId, sessionRecord.repoOwner);
-      return tokenResult.token;
-    } catch {
-      return getUserGitHubToken();
-    }
-  }
-
-  return getUserGitHubToken();
-}
-
-async function createWorkflowChatRuntime(params: {
-  userId: string;
-  sessionRecord: ActiveSessionRecord;
-}) {
-  const [{ discoverSkills }, { connectSandbox }, { DEFAULT_SANDBOX_PORTS }] =
-    await Promise.all([
-      import("@open-harness/agent"),
-      import("@open-harness/sandbox"),
-      import("@/lib/sandbox/config"),
-    ]);
-
-  const githubToken = await resolveGitHubToken(
-    params.userId,
-    params.sessionRecord,
-  );
-  const sandbox = await connectSandbox(params.sessionRecord.sandboxState, {
-    env: githubToken ? { GITHUB_TOKEN: githubToken } : undefined,
-    ports: DEFAULT_SANDBOX_PORTS,
-  });
-
-  if (
-    githubToken &&
-    params.sessionRecord.repoOwner &&
-    params.sessionRecord.repoName
-  ) {
-    const authUrl = `https://x-access-token:${githubToken}@github.com/${params.sessionRecord.repoOwner}/${params.sessionRecord.repoName}.git`;
-    const remoteResult = await sandbox.exec(
-      `git remote set-url origin "${authUrl}"`,
-      sandbox.workingDirectory,
-      5000,
-    );
-
-    if (!remoteResult.success) {
-      console.warn(
-        `Failed to refresh git remote auth for session ${params.sessionRecord.id}: ${remoteResult.stderr ?? remoteResult.stdout}`,
-      );
-    }
-  }
-
-  const skillDirs = [".claude", ".agents"].map(
-    (folder) => `${sandbox.workingDirectory}/${folder}/skills`,
-  );
-  const skills = await discoverSkills(sandbox, skillDirs);
-
-  return {
-    sandbox,
-    skills,
-  };
 }
 
 export interface ChatAgentStepResult {
@@ -345,23 +271,29 @@ export async function finalizeChatWorkflowRun(params: {
 
   const activityAt = new Date();
 
-  try {
-    const upsertResult = await upsertChatMessageScoped({
-      id: params.responseMessage.id,
-      chatId: params.chatId,
-      role: "assistant",
-      parts: params.responseMessage,
-    });
+  const hasRenderableAssistantContent = params.responseMessage.parts.some(
+    hasRenderableAssistantPart,
+  );
 
-    if (upsertResult.status === "conflict") {
-      console.warn(
-        `Skipped assistant message upsert due to ID scope conflict: ${params.responseMessage.id}`,
-      );
-    } else if (upsertResult.status === "inserted") {
-      await updateChatAssistantActivity(params.chatId, activityAt);
+  if (hasRenderableAssistantContent) {
+    try {
+      const upsertResult = await upsertChatMessageScoped({
+        id: params.responseMessage.id,
+        chatId: params.chatId,
+        role: "assistant",
+        parts: params.responseMessage,
+      });
+
+      if (upsertResult.status === "conflict") {
+        console.warn(
+          `Skipped assistant message upsert due to ID scope conflict: ${params.responseMessage.id}`,
+        );
+      } else if (upsertResult.status === "inserted") {
+        await updateChatAssistantActivity(params.chatId, activityAt);
+      }
+    } catch (error) {
+      console.error("Failed to save assistant message:", error);
     }
-  } catch (error) {
-    console.error("Failed to save assistant message:", error);
   }
 
   const currentSession = await getSessionById(params.sessionId);

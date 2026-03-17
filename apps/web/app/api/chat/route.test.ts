@@ -87,6 +87,7 @@ mock.module("@/lib/session/get-server-session", () => ({
 }));
 
 mock.module("./_lib/message-persistence", () => ({
+  persistAssistantMessageFromStream: async () => undefined,
   scheduleLatestMessagePersistence: (chatId: string, messages: unknown[]) => {
     scheduleLatestMessagePersistenceCalls.push({ chatId, messages });
     return null;

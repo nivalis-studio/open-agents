@@ -8,7 +8,10 @@ import {
   requireAuthenticatedUser,
   requireOwnedSessionChat,
 } from "./_lib/chat-context";
-import { scheduleLatestMessagePersistence } from "./_lib/message-persistence";
+import {
+  persistAssistantMessageFromStream,
+  scheduleLatestMessagePersistence,
+} from "./_lib/message-persistence";
 import { resolveChatModelSelection } from "./_lib/model-selection";
 import { parseChatRequestBody, requireChatIdentifiers } from "./_lib/request";
 import { createStreamToken } from "@/lib/chat-stream-token";
@@ -57,7 +60,10 @@ export async function POST(req: Request) {
   const requestStartedAt = new Date();
   const requestStartedAtMs = requestStartedAt.getTime();
 
-  scheduleLatestMessagePersistence(chatId, messages);
+  const pendingAssistantSnapshot = scheduleLatestMessagePersistence(
+    chatId,
+    messages,
+  );
 
   await updateSession(sessionId, {
     ...buildActiveLifecycleUpdate(sessionRecord.sandboxState, {
@@ -111,8 +117,19 @@ export async function POST(req: Request) {
     console.error("Failed to claim chat stream ownership:", error);
   }
 
+  const [clientStream, persistenceStream] = run.readable.tee();
+  void persistAssistantMessageFromStream({
+    chatId,
+    stream: persistenceStream,
+    ...(pendingAssistantSnapshot
+      ? {
+          initialAssistantMessage: pendingAssistantSnapshot,
+        }
+      : {}),
+  });
+
   return createUIMessageStreamResponse({
-    stream: run.readable,
+    stream: clientStream,
     headers: {
       "x-workflow-run-id": run.runId,
     },

@@ -9,6 +9,7 @@ import { parseStreamTokenValue } from "@/lib/chat-stream-token";
 import {
   abortChatInstanceTransport,
   getOrCreateChatInstance,
+  resetChatInstanceTransport,
 } from "@/lib/chat-instance-manager";
 import { cleanupChatRouteOnUnmount } from "@/lib/chat-route-cleanup";
 
@@ -166,10 +167,15 @@ export function useSessionChatRuntime({
 
   const stopChatStream = useCallback(() => {
     userStoppedRef.current = true;
+    workflowRunIdRef.current = null;
 
-    // Abort the active client connection only. The workflow keeps running so
-    // it can finish and persist its response, matching the durable reference
-    // implementation instead of dropping the assistant message on stop.
+    // Publish a cooperative stop signal so the workflow can persist the
+    // partial assistant response before ending, then tear down the client-side
+    // connection immediately so the UI reacts on the first tap.
+    void fetch(`/api/chat/${chatId}/stop`, {
+      method: "POST",
+    }).catch(() => {});
+
     void chatInstance.stop();
     abortChatInstanceTransport(chatId);
   }, [chatId, chatInstance]);
@@ -230,6 +236,7 @@ export function useSessionChatRuntime({
               // Ignore stale local stop failures and still attempt reconnect.
             }
             abortChatInstanceTransport(chatId);
+            resetChatInstanceTransport(chatId);
           }
 
           // Clear the error so the chat UI becomes visible again.

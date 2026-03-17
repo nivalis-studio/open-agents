@@ -1,10 +1,13 @@
 import { createUIMessageStreamResponse } from "ai";
 import { getRun } from "workflow/api";
+import type { WebAgentUIMessage } from "@/app/types";
 import {
   requireAuthenticatedUser,
   requireOwnedChatById,
 } from "@/app/api/chat/_lib/chat-context";
+import { persistAssistantMessageFromStream } from "@/app/api/chat/_lib/message-persistence";
 import { parseStreamTokenValue } from "@/lib/chat-stream-token";
+import { getChatMessages } from "@/lib/db/sessions";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
@@ -46,9 +49,25 @@ export async function GET(request: Request, context: RouteContext) {
     : undefined;
 
   try {
+    const latestPersistedMessage = (await getChatMessages(owningChatId)).at(-1);
+    const initialAssistantMessage =
+      latestPersistedMessage?.role === "assistant"
+        ? (latestPersistedMessage.parts as WebAgentUIMessage)
+        : undefined;
+
     const run = getRun(runId);
+    const [clientStream, persistenceStream] = run
+      .getReadable({ startIndex })
+      .tee();
+
+    void persistAssistantMessageFromStream({
+      chatId: owningChatId,
+      stream: persistenceStream,
+      ...(initialAssistantMessage ? { initialAssistantMessage } : {}),
+    });
+
     return createUIMessageStreamResponse({
-      stream: run.getReadable({ startIndex }),
+      stream: clientStream,
     });
   } catch {
     return new Response(null, { status: 204 });

@@ -3,8 +3,8 @@ import {
   requireAuthenticatedUser,
   requireOwnedChatById,
 } from "@/app/api/chat/_lib/chat-context";
-import { compareAndSetChatActiveStreamId } from "@/lib/db/sessions";
 import { parseStreamTokenValue } from "@/lib/chat-stream-token";
+import { compareAndSetChatActiveStreamId } from "@/lib/db/sessions";
 
 type RouteContext = {
   params: Promise<{ chatId: string }>;
