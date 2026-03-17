@@ -12,19 +12,6 @@ export interface ChatWorkflowInput {
   subagentModel?: AgentModelSelection;
 }
 
-export const upsertAssistantMessage = (
-  messages: WebAgentUIMessage[],
-  assistantMessage: WebAgentUIMessage,
-): WebAgentUIMessage[] => {
-  const lastMessage = messages.at(-1);
-
-  if (lastMessage?.role === "assistant") {
-    return [...messages.slice(0, -1), assistantMessage];
-  }
-
-  return [...messages, assistantMessage];
-};
-
 export const shouldPauseForToolInteraction = (
   parts: WebAgentUIMessage["parts"],
 ) =>

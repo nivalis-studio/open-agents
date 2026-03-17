@@ -8,7 +8,6 @@ import {
   mergeLanguageModelUsage,
   type ChatWorkflowInput,
   shouldPauseForToolInteraction,
-  upsertAssistantMessage,
 } from "./chat-shared";
 import {
   clearChatActiveStreamIfOwned,
@@ -66,7 +65,7 @@ export async function chatWorkflow(input: ChatWorkflowInput) {
           parts: [],
           metadata: {},
         };
-  let originalMessagesForStep = input.messages;
+  let originalMessagesForStep = [latestMessage];
   let finishReason: FinishReason = "stop";
   let totalMessageUsage: LanguageModelUsage | undefined;
   let lastStepUsage: LanguageModelUsage | undefined;
@@ -89,10 +88,7 @@ export async function chatWorkflow(input: ChatWorkflowInput) {
       });
 
       responseMessage = stepResult.responseMessage;
-      originalMessagesForStep = upsertAssistantMessage(
-        originalMessagesForStep,
-        responseMessage,
-      );
+      originalMessagesForStep = [responseMessage];
       modelMessages.push(...stepResult.responseMessages);
       finishReason = stepResult.finishReason;
       sandboxState = stepResult.sandboxState;
