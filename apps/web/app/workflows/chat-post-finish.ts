@@ -1,10 +1,5 @@
 import type { LanguageModelUsage } from "ai";
-import {
-  collectTaskToolUsageEvents,
-  sumLanguageModelUsage,
-} from "@open-harness/agent";
 import type { SandboxState } from "@open-harness/sandbox";
-import { connectSandbox } from "@open-harness/sandbox";
 import type { WebAgentUIMessage } from "@/app/types";
 import {
   compareAndSetChatActiveStreamId,
@@ -103,6 +98,7 @@ export async function persistSandboxState(
 ): Promise<void> {
   "use step";
   try {
+    const { connectSandbox } = await import("@open-harness/sandbox");
     const sandbox = await connectSandbox(sandboxState);
     const currentState = sandbox.getState?.() as SandboxState | undefined;
     if (currentState) {
@@ -141,6 +137,11 @@ export async function recordWorkflowUsage(
   "use step";
 
   try {
+    const {
+      collectTaskToolUsageEvents,
+      sumLanguageModelUsage,
+    } = await import("@open-harness/agent");
+
     // Record main agent usage
     if (totalUsage) {
       await recordUsage(userId, {

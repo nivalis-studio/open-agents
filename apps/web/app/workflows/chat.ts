@@ -7,11 +7,9 @@ import {
   type ModelMessage,
   type UIMessageChunk,
 } from "ai";
-import { addLanguageModelUsage } from "@open-harness/agent";
 import type { OpenHarnessAgentCallOptions } from "@open-harness/agent";
 import { getWorkflowMetadata, getWritable } from "workflow";
 import { getRun } from "workflow/api";
-import { webAgent } from "@/app/config";
 import type { WebAgentUIMessage, WebAgentMessageMetadata } from "@/app/types";
 import {
   clearActiveStream,
@@ -44,6 +42,7 @@ const convertMessages = async (
   messages: WebAgentUIMessage[],
 ): Promise<ModelMessage[]> => {
   "use step";
+  const { webAgent } = await import("@/app/config");
   return await convertToModelMessages(messages, {
     ignoreIncompleteToolCalls: true,
     tools: webAgent.tools,
@@ -53,6 +52,15 @@ const convertMessages = async (
 const generateId = async () => {
   "use step";
   return generateIdAi();
+};
+
+const addUsage = async (
+  a: LanguageModelUsage,
+  b: LanguageModelUsage,
+): Promise<LanguageModelUsage> => {
+  "use step";
+  const { addLanguageModelUsage } = await import("@open-harness/agent");
+  return addLanguageModelUsage(a, b);
 };
 
 export async function runAgentWorkflow(options: Options) {
@@ -118,7 +126,7 @@ export async function runAgentWorkflow(options: Options) {
 
     if (result.stepUsage) {
       totalUsage = totalUsage
-        ? addLanguageModelUsage(totalUsage, result.stepUsage)
+        ? await addUsage(totalUsage, result.stepUsage)
         : result.stepUsage;
     }
 
@@ -163,6 +171,8 @@ const runAgentStep = async (
   agentOptions: OpenHarnessAgentCallOptions,
 ) => {
   "use step";
+
+  const { webAgent } = await import("@/app/config");
 
   const abortController = new AbortController();
   const stopMonitor = startStopMonitor(workflowRunId, abortController);
