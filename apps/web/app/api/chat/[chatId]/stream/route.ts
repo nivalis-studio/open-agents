@@ -1,4 +1,4 @@
-import { UI_MESSAGE_STREAM_HEADERS } from "ai";
+import { createUIMessageStreamResponse } from "ai";
 import { getRun } from "workflow/api";
 import {
   requireAuthenticatedUser,
@@ -47,8 +47,8 @@ export async function GET(request: Request, context: RouteContext) {
 
   try {
     const run = getRun(runId);
-    return new Response(run.getReadable({ startIndex }), {
-      headers: UI_MESSAGE_STREAM_HEADERS,
+    return createUIMessageStreamResponse({
+      stream: run.getReadable({ startIndex }),
     });
   } catch {
     return new Response(null, { status: 204 });

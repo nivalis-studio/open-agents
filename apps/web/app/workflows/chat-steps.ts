@@ -282,11 +282,27 @@ export async function sendFinish(
       finishReason,
       messageMetadata: metadata,
     });
+  } catch (error) {
+    if (
+      !(error instanceof TypeError) ||
+      !String(error.message).includes("WritableStream is closed")
+    ) {
+      throw error;
+    }
   } finally {
     writer.releaseLock();
   }
 
-  await writable.close();
+  try {
+    await writable.close();
+  } catch (error) {
+    if (
+      !(error instanceof TypeError) ||
+      !String(error.message).includes("WritableStream is closed")
+    ) {
+      throw error;
+    }
+  }
 }
 
 export async function clearChatActiveStreamIfOwned(
