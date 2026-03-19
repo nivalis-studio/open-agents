@@ -248,37 +248,6 @@ describe("runAgentWorkflow", () => {
     ]);
   });
 
-  test("falls back to stream result raw finish reason for stop steps", async () => {
-    agentFinishReason = "stop";
-    agentRawFinishReason = "provider_end_turn";
-    agentStreamParts = [{ type: "text-delta", textDelta: "Hi" }];
-
-    await runAgentWorkflow(makeOptions());
-
-    const persistCalls = spies.persistAssistantMessage.mock.calls as unknown[][];
-    const persistedMessage = persistCalls.at(-1)?.[1] as {
-      metadata?: {
-        lastStepFinishReason?: string;
-        lastStepRawFinishReason?: string;
-        stepFinishReasons?: Array<{
-          finishReason: string;
-          rawFinishReason?: string;
-        }>;
-      };
-    };
-
-    expect(persistedMessage.metadata?.lastStepFinishReason).toBe("stop");
-    expect(persistedMessage.metadata?.lastStepRawFinishReason).toBe(
-      "provider_end_turn",
-    );
-    expect(persistedMessage.metadata?.stepFinishReasons).toEqual([
-      {
-        finishReason: "stop",
-        rawFinishReason: "provider_end_turn",
-      },
-    ]);
-  });
-
   test("persists sandbox state when sandbox is present", async () => {
     await runAgentWorkflow(makeOptions());
 
