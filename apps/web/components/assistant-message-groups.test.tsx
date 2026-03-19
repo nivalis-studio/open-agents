@@ -5,12 +5,17 @@ import { AssistantMessageGroups } from "./assistant-message-groups";
 
 function renderMessage(
   message: WebAgentUIMessage,
-  isStreaming = false,
+  options?: {
+    isStreaming?: boolean;
+    isInterrupted?: boolean;
+  },
 ): string {
+  const { isStreaming = false, isInterrupted = false } = options ?? {};
   return renderToStaticMarkup(
     <AssistantMessageGroups
       message={message}
       isStreaming={isStreaming}
+      isInterrupted={isInterrupted}
       durationMs={null}
       startedAt={null}
     >
@@ -82,6 +87,38 @@ describe("AssistantMessageGroups interrupted summary", () => {
           },
         ],
       }),
+    );
+
+    expect(html).toContain(
+      '<span class="inline-flex shrink-0 items-center rounded-full border border-yellow-500/30 bg-yellow-500/10 px-2 py-0.5 text-[11px] font-medium leading-none text-yellow-600 dark:text-yellow-400">Interrupted</span>',
+    );
+  });
+
+  test("marks a user-aborted assistant turn as interrupted even when no tool call is interrupted", () => {
+    const html = renderMessage(
+      makeAssistantMessage({
+        parts: [
+          {
+            type: "tool-ask_user_question",
+            toolCallId: "tool-3",
+            state: "input-available",
+            input: {
+              questions: [
+                {
+                  header: "Choice",
+                  question: "Pick one?",
+                  options: [
+                    { label: "A", description: "Option A" },
+                    { label: "B", description: "Option B" },
+                  ],
+                  multiSelect: false,
+                },
+              ],
+            },
+          },
+        ],
+      }),
+      { isInterrupted: true },
     );
 
     expect(html).toContain(

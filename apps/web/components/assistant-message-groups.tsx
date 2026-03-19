@@ -117,6 +117,8 @@ function messageHasInterruptedToolCalls(
 export type AssistantMessageGroupsProps = {
   message: WebAgentUIMessage;
   isStreaming: boolean;
+  /** Whether this assistant turn was explicitly interrupted by the user. */
+  isInterrupted?: boolean;
   /** Pre-computed generation duration in ms (for completed messages) */
   durationMs: number | null;
   /** ISO timestamp of the preceding user message's createdAt (for live timer while streaming) */
@@ -137,6 +139,7 @@ export type AssistantMessageGroupsProps = {
 export function AssistantMessageGroups({
   message,
   isStreaming,
+  isInterrupted = false,
   durationMs,
   startedAt,
   children,
@@ -159,10 +162,13 @@ export function AssistantMessageGroups({
     [message],
   );
 
-  const isInterrupted = useMemo(
+  const hasInterruptedToolCalls = useMemo(
     () => messageHasInterruptedToolCalls(message, isStreaming),
     [message, isStreaming],
   );
+
+  const showInterrupted =
+    !isStreaming && (isInterrupted || hasInterruptedToolCalls);
 
   // Force expand when there's an active approval the user needs to respond to
   const effectiveExpanded = isExpanded || hasActiveApproval;
@@ -178,7 +184,7 @@ export function AssistantMessageGroups({
         isExpanded={effectiveExpanded}
         onToggle={() => setIsExpanded((v) => !v)}
         isStreaming={isStreaming}
-        isInterrupted={isInterrupted}
+        isInterrupted={showInterrupted}
         toolCallCount={toolCallCount}
         changedFiles={changedFiles}
         todoInfo={todoInfo}

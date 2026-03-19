@@ -205,6 +205,7 @@ interface GroupedRenderMessage {
   message: WebAgentUIMessage;
   groups: MessageRenderGroup[];
   isStreaming: boolean;
+  isInterrupted: boolean;
 }
 
 function getPartIdentity(part: WebAgentUIMessagePart): string {
@@ -1072,6 +1073,9 @@ export function SessionChatContent({
   );
   const hasSeenAssistantRenderableContentRef = useRef(false);
   const [hasPendingResponse, setHasPendingResponse] = useState(false);
+  const [interruptedMessageIds, setInterruptedMessageIds] = useState<
+    Set<string>
+  >(() => new Set());
   /** Captures Date.now() when the user sends a message, so the streaming
    *  summary bar can show an accurate live timer from the actual send time. */
   const lastSendTimestampRef = useRef<number | null>(null);
@@ -1224,9 +1228,10 @@ export function SessionChatContent({
         groups,
         isStreaming:
           isChatInFlight && messageIndex === renderMessages.length - 1,
+        isInterrupted: interruptedMessageIds.has(message.id),
       };
     });
-  }, [renderMessages, isChatInFlight]);
+  }, [renderMessages, isChatInFlight, interruptedMessageIds]);
   const [isUpdatingModel, setIsUpdatingModel] = useState(false);
   const lastStatusSyncAtRef = useRef(0);
   const statusSyncInFlightRef = useRef(false);
@@ -2711,7 +2716,12 @@ export function SessionChatContent({
           <div className="mx-auto max-w-4xl overflow-hidden px-4 py-8">
             <div className="space-y-6">
               {groupedRenderMessages.map(
-                ({ message: m, groups, isStreaming: isMessageStreaming }) => {
+                ({
+                  message: m,
+                  groups,
+                  isStreaming: isMessageStreaming,
+                  isInterrupted: isMessageInterrupted,
+                }) => {
                   const renderGroups = (isToolCallsExpanded: boolean) =>
                     groups.map((group) => {
                       if (group.type === "task-group") {
@@ -3001,6 +3011,7 @@ export function SessionChatContent({
                         key={m.id}
                         message={m}
                         isStreaming={isMessageStreaming}
+                        isInterrupted={isMessageInterrupted}
                         durationMs={messageDurationMap[m.id] ?? null}
                         startedAt={
                           messageStartedAtMap[m.id] ??
@@ -3391,6 +3402,13 @@ export function SessionChatContent({
                       type="button"
                       size="icon"
                       onClick={() => {
+                        if (lastMessage?.role === "assistant") {
+                          setInterruptedMessageIds((prev) => {
+                            const next = new Set(prev);
+                            next.add(lastMessage.id);
+                            return next;
+                          });
+                        }
                         stopChatStream();
                         setHasPendingResponse(false);
                       }}
