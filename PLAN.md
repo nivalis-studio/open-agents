@@ -14,6 +14,17 @@ Changes:
 - `apps/web/app/api/sessions/route.ts`, `apps/web/app/api/sandbox/route.ts`, `apps/web/app/api/chat/route.ts` - extract reusable server-side business logic Slack needs so the webhook can call shared helpers instead of making internal HTTP requests or duplicating route logic.
 - `apps/web/app/workflows/chat.ts` and/or `apps/web/app/workflows/chat-post-finish.ts` - trigger the one-time Slack final reply after persistence, only for natural finishes, then clear the reply target.
 
+Slack v1 syntax rules:
+- The first non-mention token must be `repo=owner/repo` or `repo=owner/repo#branch`.
+- If `#branch` is omitted, create the session in new-branch mode using the existing generated-branch flow.
+- If `#branch` is present, it is treated as a literal branch name; branch names may include `/`, `.`, `_`, and `-` until the first whitespace.
+- Everything after the repo token is the prompt and is required.
+- Recommended user-facing errors:
+  - missing repo token: `Use repo=owner/repo#branch <prompt>. Omit #branch to create a new branch.`
+  - invalid repo shape: `Repo must look like owner/repo.`
+  - empty branch after `#`: `Add a branch after #, or omit #branch to create a new branch.`
+  - missing prompt: `Add a prompt after the repo, for example: repo=vercel/ai Fix the failing tests.`
+
 Verification:
 - Unit tests for Slack repo parsing, signed link token validation, and Slack replyback gating.
 - Route/service tests covering: unlinked Slack user, linked kickoff success, invalid repo syntax, and “link posted immediately”.
