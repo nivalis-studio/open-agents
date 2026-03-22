@@ -12,11 +12,11 @@ import {
 } from "react";
 import { InboxSidebar } from "@/components/inbox-sidebar";
 import { NewSessionDialog } from "@/components/new-session-dialog";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useBackgroundChatNotifications } from "@/hooks/use-background-chat-notifications";
 import { useSessions, type SessionWithUnread } from "@/hooks/use-sessions";
 import type { Session as AuthSession } from "@/lib/session/types";
-import { cn } from "@/lib/utils";
 import { SessionsShellProvider } from "./sessions-shell-context";
 
 type SessionsRouteShellProps = {
@@ -107,6 +107,7 @@ export function SessionsRouteShell({
 
       if (targetSessionId === routeSessionId) {
         setOptimisticActiveSessionId(null);
+        setSheetOpen(false);
         startNavigationTransition(() => {
           router.push("/sessions");
         });
@@ -126,16 +127,28 @@ export function SessionsRouteShell({
 
   const activeSessionId = optimisticActiveSessionId ?? routeSessionId ?? "";
   const pendingSessionId = isNavigating ? optimisticActiveSessionId : null;
-  const panelOpen = Boolean(routeSessionId);
 
   useBackgroundChatNotifications(sessions, routeSessionId, handleSessionClick);
 
-  const handleClosePanel = useCallback(() => {
-    setOptimisticActiveSessionId(null);
-    startNavigationTransition(() => {
-      router.push("/sessions");
-    });
-  }, [router, startNavigationTransition]);
+  // Sheet state: synced with route but closeable immediately for snappy animation
+  const [sheetOpen, setSheetOpen] = useState(Boolean(routeSessionId));
+
+  useEffect(() => {
+    setSheetOpen(Boolean(routeSessionId));
+  }, [routeSessionId]);
+
+  const handleSheetOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        setSheetOpen(false);
+        setOptimisticActiveSessionId(null);
+        startNavigationTransition(() => {
+          router.push("/sessions");
+        });
+      }
+    },
+    [router, startNavigationTransition],
+  );
 
   const shellContextValue = useMemo(
     () => ({
@@ -165,27 +178,17 @@ export function SessionsRouteShell({
           />
         </div>
 
-        {/* Backdrop */}
-        <button
-          type="button"
-          className={cn(
-            "fixed inset-0 z-40 bg-black/20 transition-opacity duration-200",
-            panelOpen ? "opacity-100" : "pointer-events-none opacity-0",
-          )}
-          onClick={handleClosePanel}
-          tabIndex={-1}
-          aria-label="Close session panel"
-        />
-
-        {/* Session detail panel — slides from right */}
-        <div
-          className={cn(
-            "fixed inset-y-0 right-0 z-50 w-full border-l border-border bg-background shadow-xl transition-transform duration-200 ease-out sm:w-[min(72vw,64rem)]",
-            panelOpen ? "translate-x-0" : "translate-x-full",
-          )}
-        >
-          <div className="flex h-full flex-col overflow-hidden">{children}</div>
-        </div>
+        {/* Session detail panel */}
+        <Sheet open={sheetOpen} onOpenChange={handleSheetOpenChange}>
+          <SheetContent
+            side="right"
+            className="w-full gap-0 p-0 sm:w-[min(72vw,64rem)] sm:max-w-none data-[state=closed]:duration-200 data-[state=open]:duration-200 [&>[data-slot=sheet-close]]:hidden"
+          >
+            <div className="flex h-full flex-col overflow-hidden">
+              {children}
+            </div>
+          </SheetContent>
+        </Sheet>
       </SidebarProvider>
 
       <NewSessionDialog
