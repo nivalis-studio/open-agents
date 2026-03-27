@@ -4,8 +4,6 @@ Produce polished, shareable demo videos with a visible cursor and minimal dead t
 
 This guide builds on the basics in `video-recording.md` with techniques specific to recording demos that look good to viewers.
 
-**See also**: [narrated-recording.md](narrated-recording.md) for adding a synchronized voiceover script to your demos.
-
 ## Key Principles
 
 - **Minimize dead time** — chain commands with `&&` so tool-call overhead stays out of the video.
@@ -111,10 +109,6 @@ Viewer page (`public/demo.html`):
 </body>
 </html>
 ```
-
-## Narrated Recordings
-
-To produce a voiceover script alongside the video — like an engineer narrating a demo — see [narrated-recording.md](narrated-recording.md). The workflow generates a WebVTT file that can be used as subtitles, fed to TTS for audio synthesis, or read as standalone documentation.
 
 ## Common Mistakes
 

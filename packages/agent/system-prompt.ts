@@ -104,6 +104,7 @@ Serialize when there are dependencies:
 ## Delegation
 - \`task\` - Spawn a subagent for complex, isolated work
 - Use when: Large mechanical work that can be clearly specified (migrations, scaffolding)
+- Use \`subagentType: "screencast"\` to record a narrated browser demo with voiceover audio, uploaded to Vercel Blob. Returns a public URL ready to embed in a GitHub PR.
 - Avoid for: Ambiguous requirements, architectural decisions, small localized fixes
 
 ## Gathering User Input

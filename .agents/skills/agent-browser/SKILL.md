@@ -319,39 +319,6 @@ agent-browser record start ./debug.webm   # Record video from current page
 agent-browser record stop                 # Save recording
 ```
 
-## Narrated screencast (demo with voiceover script)
-
-Record a browser session with a synchronized voiceover script. Produces a `.webm` video and a `.vtt` file that can be used as subtitles, fed to TTS, or read as documentation. See [references/narrated-recording.md](references/narrated-recording.md) for the full guide.
-
-```bash
-# 1. Initialize timing and VTT file
-RECORDING_START=$(date +%s%3N)
-VIDEO_PATH="./demo.webm"
-VTT_PATH="${VIDEO_PATH%.webm}.vtt"
-echo "WEBVTT" > "$VTT_PATH"
-
-# 2. Define the narrate() helper (writes timestamped cues)
-#    See references/narrated-recording.md for the full implementation
-
-# 3. Record with narration
-agent-browser record start "$VIDEO_PATH"
-
-narrate "Opening the app to show the new feature."
-agent-browser open https://app.example.com
-agent-browser wait --load networkidle
-agent-browser wait 2000
-
-narrate "Clicking the main CTA to show the onboarding flow."
-agent-browser snapshot -i
-agent-browser click @e1
-agent-browser wait --load networkidle
-agent-browser wait 1500
-
-narrate ""  # Flush final cue
-agent-browser record stop
-# Output: demo.webm (video) + demo.vtt (voiceover script)
-```
-
 ## Deep-dive documentation
 
 For detailed patterns and best practices, see:
@@ -362,7 +329,6 @@ For detailed patterns and best practices, see:
 | [references/session-management.md](references/session-management.md) | Parallel sessions, state persistence, concurrent scraping |
 | [references/authentication.md](references/authentication.md) | Login flows, OAuth, 2FA handling, state reuse |
 | [references/video-recording.md](references/video-recording.md) | Recording workflows for debugging and documentation |
-| [references/narrated-recording.md](references/narrated-recording.md) | Narrated screencasts with synchronized voiceover scripts |
 | [references/proxy-support.md](references/proxy-support.md) | Proxy configuration, geo-testing, rotating proxies |
 
 ## Ready-to-use templates
@@ -374,16 +340,12 @@ Executable workflow scripts for common patterns:
 | [templates/form-automation.sh](templates/form-automation.sh) | Form filling with validation |
 | [templates/authenticated-session.sh](templates/authenticated-session.sh) | Login once, reuse state |
 | [templates/capture-workflow.sh](templates/capture-workflow.sh) | Content extraction with screenshots |
-| [templates/narrated-screencast.sh](templates/narrated-screencast.sh) | Record a demo with a VTT voiceover script |
-| [templates/narrate-audio.ts](templates/narrate-audio.ts) | Synthesize TTS voiceover and mux into video |
 
 Usage:
 ```bash
 ./templates/form-automation.sh https://example.com/form
 ./templates/authenticated-session.sh https://app.example.com/login
 ./templates/capture-workflow.sh https://example.com ./output
-./templates/narrated-screencast.sh https://example.com ./recordings
-bun ./templates/narrate-audio.ts ./demo.webm  # adds audio voiceover
 ```
 
 ## HTTPS Certificate Errors

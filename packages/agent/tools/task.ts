@@ -7,10 +7,11 @@ import {
 import { z } from "zod";
 import { executorSubagent } from "../subagents/executor";
 import { explorerSubagent } from "../subagents/explorer";
+import { screencastSubagent } from "../subagents/screencast";
 import { sumLanguageModelUsage } from "../usage";
 import { getSandboxContext, getSubagentModel } from "./utils";
 
-const subagentTypeSchema = z.enum(["explorer", "executor"]);
+const subagentTypeSchema = z.enum(["explorer", "executor", "screencast"]);
 
 const taskInputSchema = z.object({
   subagentType: subagentTypeSchema.describe(
@@ -75,6 +76,12 @@ WHEN TO USE EXECUTOR:
 - Mass migrations or boilerplate generation
 - Any implementation task where detailed execution would clutter the main conversation
 
+WHEN TO USE SCREENCAST:
+- Recording a narrated browser demo of a feature
+- Creating visual documentation or walkthroughs
+- Producing a shareable video for a PR or design review
+- The screencast subagent handles the full pipeline: record → TTS voiceover → mux audio → upload
+
 WHEN NOT TO USE (do it yourself):
 - Simple, single-file or single-change edits
 - Tasks where you already have all the context you need
@@ -94,7 +101,7 @@ IMPORTANT:
 - Include critical context (APIs, function names, file paths) in the instructions
 - The parent agent will not see the subagent's internal tool calls, only its final summary
 
-NOTE: Both subagents run within the sandbox. Use explorer for read-only research and executor for implementation work.`,
+NOTE: All subagents run within the sandbox. Use explorer for read-only research, executor for implementation work, and screencast for recording narrated browser demos.`,
   inputSchema: taskInputSchema,
   outputSchema: taskOutputSchema,
   execute: async function* (
@@ -106,7 +113,11 @@ NOTE: Both subagents run within the sandbox. Use explorer for read-only research
     const subagentModelId = typeof model === "string" ? model : model.modelId;
 
     const subagent =
-      subagentType === "explorer" ? explorerSubagent : executorSubagent;
+      subagentType === "explorer"
+        ? explorerSubagent
+        : subagentType === "screencast"
+          ? screencastSubagent
+          : executorSubagent;
 
     const result = await subagent.stream({
       prompt:
