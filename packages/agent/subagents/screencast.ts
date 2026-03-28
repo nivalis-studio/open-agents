@@ -92,22 +92,42 @@ agent-browser snapshot -i
 
 ### Step 2: Record video + write VTT narration script
 
-Run this bash block to set up recording infrastructure, then execute your planned scenes:
+Run recording as a single bash session so shell variables and the narration helper persist for the whole take. Start recording only after the first page is already visible and stable.
+
+CRITICAL recording rules:
+- Do NOT start recording before the first page is visible.
+- Do NOT open the first URL after recording starts unless you intentionally want to show navigation from a loaded page.
+- After \`agent-browser record start\`, keep the capture alive with real browser actions plus explicit waits.
+- The last narration cue must stay on screen long enough to be heard before stopping the recording.
+- Before stopping, close the final cue by calling \`narrate ""\`, then wait at least 1500ms, then stop recording.
+- If the resulting video is blank or under 3 seconds, record again with a longer initial wait after recording starts and longer waits between actions.
+
+Use this template and replace the example actions with the real walkthrough steps:
 
 \`\`\`bash
 mkdir -p /tmp/screencast
-RECORDING_START=$(date +%s%3N)
+TARGET_URL="<url>"
 VIDEO_PATH="/tmp/screencast/demo.webm"
 VTT_PATH="/tmp/screencast/demo.vtt"
+RECORDING_START=""
+PENDING_CUE=""
+PENDING_START=""
+
 echo "WEBVTT" > "$VTT_PATH"
-PENDING_CUE="" && PENDING_START=""
+
+ms_to_ts() {
+  local total_ms="$1"
+  local secs=$(( total_ms / 1000 ))
+  local ms=$(( total_ms % 1000 ))
+  local mins=$(( secs / 60 ))
+  local s=$(( secs % 60 ))
+  printf "%02d:%02d.%03d" "$mins" "$s" "$ms"
+}
 
 narrate() {
   local now=$(date +%s%3N)
   local elapsed_ms=$(( now - RECORDING_START ))
-  local secs=$(( elapsed_ms / 1000 )) ms=$(( elapsed_ms % 1000 ))
-  local mins=$(( secs / 60 )) s=$(( secs % 60 ))
-  local ts=$(printf "%02d:%02d.%03d" $mins $s $ms)
+  local ts=$(ms_to_ts "$elapsed_ms")
   if [ -n "$PENDING_CUE" ]; then
     printf "\\n%s --> %s\\n%s\\n" "$PENDING_START" "$ts" "$PENDING_CUE" >> "$VTT_PATH"
   fi
@@ -115,18 +135,27 @@ narrate() {
   PENDING_CUE="$1"
 }
 
+agent-browser open "$TARGET_URL" && agent-browser wait --load networkidle && agent-browser wait 2000
+agent-browser snapshot -i
 agent-browser record start "$VIDEO_PATH"
+agent-browser wait 1000
+RECORDING_START=$(date +%s%3N)
 
-narrate "Your first narration cue here."
-agent-browser open <url> && agent-browser wait --load networkidle && agent-browser wait 2000
+narrate "Here's the page in its initial loaded state."
+agent-browser wait 1500
 
-narrate "Your second narration cue here."
-agent-browser snapshot -i && agent-browser click @e1 && agent-browser wait --load networkidle && agent-browser wait 1500
+narrate "Now I'm clicking into the next area I want to show."
+agent-browser click @e1 && agent-browser wait --load networkidle && agent-browser wait 2000
+
+narrate "This is the result of that interaction."
+agent-browser wait 2000
 
 narrate ""
+agent-browser wait 1500
 agent-browser record stop
 
 cat "$VTT_PATH"
+ls -lh "$VIDEO_PATH"
 \`\`\`
 
 Narration should be conversational, first-person ("Here I'm opening the dashboard..."). Don't mention refs, selectors, or wait times.
@@ -152,7 +181,15 @@ FFMPEG=$(which ffmpeg || echo node_modules/ffmpeg-static/ffmpeg)
 
 ### Step 5: Upload
 
-Call upload_blob for the video. Save the returned URL — you need it for your final response.
+Before uploading, verify the output file is real and non-trivial.
+
+\`\`\`bash
+ls -lh /tmp/screencast/demo.webm /tmp/screencast/demo-narrated.webm
+\`\`\`
+
+If either video is suspiciously tiny, blank, or clearly shorter than expected, go back and re-record before uploading.
+
+Call upload_blob for the final video. Save the returned URL — you need it for your final response.
 \`\`\`
 upload_blob({ filePath: "/tmp/screencast/demo-narrated.webm" })
 \`\`\`

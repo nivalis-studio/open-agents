@@ -126,9 +126,8 @@ export const synthesizeVoiceoverTool = () =>
       }
 
       // Dynamically import AI SDK + ElevenLabs
-      const { experimental_generateSpeech: generateSpeech } = await import(
-        "ai"
-      );
+      const { experimental_generateSpeech: generateSpeech } =
+        await import("ai");
       const { createElevenLabs } = await import("@ai-sdk/elevenlabs");
       const elevenlabs = createElevenLabs({ apiKey });
 
@@ -213,7 +212,10 @@ export const uploadBlobTool = () =>
       "Upload a file from the sandbox to Vercel Blob storage. " +
       "Returns the public URL. Requires BLOB_READ_WRITE_TOKEN environment variable.",
     inputSchema: uploadInputSchema,
-    execute: async ({ filePath, filename, contentType }, { experimental_context }) => {
+    execute: async (
+      { filePath, filename, contentType },
+      { experimental_context },
+    ) => {
       const sandbox = await getSandbox(experimental_context, "upload");
       const workDir = sandbox.workingDirectory;
 
@@ -252,8 +254,7 @@ export const uploadBlobTool = () =>
       } catch {
         return {
           success: false,
-          error:
-            "@vercel/blob is not installed. Run: bun add @vercel/blob",
+          error: "@vercel/blob is not installed. Run: bun add @vercel/blob",
         };
       }
 
