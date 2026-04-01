@@ -18,10 +18,10 @@ let sessionRecord: {
   userId: string;
   sandboxState: {
     type: "vercel";
-    sandboxId: string;
-    expiresAt: number;
-  };
-  lifecycleState: "active" | "failed";
+    sandboxId?: string;
+    expiresAt?: number;
+  } | null;
+  lifecycleState: "active" | "failed" | "provisioning";
   lifecycleError: string | null;
   lifecycleVersion: number;
   hibernateAfter: Date | null;
@@ -119,6 +119,52 @@ describe("/api/sandbox/status lifecycle safety net", () => {
     expect(updateCalls[0]?.sessionId).toBe("session-1");
     expect(updateCalls[0]?.patch.lifecycleState).toBe("active");
     expect(updateCalls[0]?.patch.lifecycleError).toBeNull();
+    expect(kickCalls).toHaveLength(0);
+  });
+
+  test("returns active after recovering a failed lifecycle with stale expiry", async () => {
+    const { GET } = await routeModulePromise;
+
+    sessionRecord.lifecycleState = "failed";
+    sessionRecord.lifecycleError = "snapshot failed";
+    sessionRecord.hibernateAfter = new Date(Date.now() + 30_000);
+    sessionRecord.sandboxExpiresAt = new Date(Date.now() - 1_000);
+
+    const response = await GET(
+      new Request("http://localhost/api/sandbox/status?sessionId=session-1"),
+    );
+    const payload = (await response.json()) as {
+      status: string;
+      lifecycle: { state: string | null; sandboxExpiresAt: number | null };
+    };
+
+    expect(response.ok).toBe(true);
+    expect(payload.status).toBe("active");
+    expect(payload.lifecycle.state).toBe("active");
+    expect(payload.lifecycle.sandboxExpiresAt).not.toBeNull();
+    expect(updateCalls).toHaveLength(1);
+  });
+
+  test("returns no_sandbox for cleared legacy sandbox state", async () => {
+    const { GET } = await routeModulePromise;
+
+    sessionRecord.lifecycleState = "provisioning";
+    sessionRecord.sandboxState = { type: "vercel" };
+    sessionRecord.hibernateAfter = null;
+    sessionRecord.sandboxExpiresAt = null;
+
+    const response = await GET(
+      new Request("http://localhost/api/sandbox/status?sessionId=session-1"),
+    );
+    const payload = (await response.json()) as {
+      status: string;
+      lifecycle: { state: string | null };
+    };
+
+    expect(response.ok).toBe(true);
+    expect(payload.status).toBe("no_sandbox");
+    expect(payload.lifecycle.state).toBe("provisioning");
+    expect(updateCalls).toHaveLength(0);
     expect(kickCalls).toHaveLength(0);
   });
 });

@@ -738,7 +738,7 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     timeoutMs: number,
   ): Promise<ExecResult> {
     try {
-      const result = await this.sdk.runCommand({
+      const result = await this.runCommandOnTarget({
         cmd: "bash",
         args: ["-c", `cd "${cwd}" && ${command}`],
         env: this.getCommandEnv(),

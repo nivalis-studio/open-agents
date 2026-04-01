@@ -290,6 +290,16 @@ describe("VercelSandbox.persistence", () => {
     await expect(
       sandbox.readFile("/vercel/sandbox/test.txt", "utf-8"),
     ).rejects.toThrow("Sandbox is stopped");
+    await expect(
+      sandbox.exec("pwd", "/vercel/sandbox", 5_000),
+    ).resolves.toEqual({
+      success: false,
+      exitCode: null,
+      stdout: "",
+      stderr: "Sandbox is stopped",
+      truncated: false,
+    });
+    expect(runCommandCalls).toHaveLength(0);
   });
 });
 

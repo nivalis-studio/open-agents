@@ -9,6 +9,10 @@ import {
   getSandboxExpiresAtDate,
 } from "@/lib/sandbox/lifecycle";
 import { kickSandboxLifecycleWorkflow } from "@/lib/sandbox/lifecycle-kick";
+import {
+  hasRuntimeSandboxState,
+  hasSandboxIdentity,
+} from "@/lib/sandbox/utils";
 
 export type SandboxStatusResponse = {
   status: "active" | "no_sandbox";
@@ -22,6 +26,22 @@ export type SandboxStatusResponse = {
     sandboxExpiresAt: number | null;
   };
 };
+
+function isLifecycleActiveState(state: string | null): boolean {
+  return (
+    state === "active" || state === "provisioning" || state === "restoring"
+  );
+}
+
+function isSessionExpired(record: { sandboxExpiresAt: Date | null }): boolean {
+  if (!record.sandboxExpiresAt) {
+    return false;
+  }
+
+  return (
+    Date.now() >= record.sandboxExpiresAt.getTime() - SANDBOX_EXPIRES_BUFFER_MS
+  );
+}
 
 export async function GET(req: Request): Promise<Response> {
   const authResult = await requireAuthenticatedUser();
@@ -47,30 +67,13 @@ export async function GET(req: Request): Promise<Response> {
   const { sessionRecord } = sessionContext;
   let effectiveSessionRecord = sessionRecord;
 
-  const hasActiveLifecycleState =
-    sessionRecord.lifecycleState === "active" ||
-    sessionRecord.lifecycleState === "provisioning" ||
-    sessionRecord.lifecycleState === "restoring";
-  const hasTrackedSandboxState =
-    sessionRecord.sandboxState !== null ||
-    sessionRecord.sandboxExpiresAt !== null;
-
-  // Check expiry: the DB may still indicate an active lifecycle even after the
-  // underlying runtime timed out.
-  let isExpired = false;
-  if (sessionRecord.sandboxExpiresAt) {
-    isExpired =
-      Date.now() >=
-      sessionRecord.sandboxExpiresAt.getTime() - SANDBOX_EXPIRES_BUFFER_MS;
-  }
-
+  const runtimeSandboxExpiresAt = getSandboxExpiresAtDate(
+    sessionRecord.sandboxState,
+  );
   const hasRecoverableFailedLifecycle =
     sessionRecord.lifecycleState === "failed" &&
-    hasTrackedSandboxState &&
-    !isExpired;
-  const isActive =
-    (hasActiveLifecycleState && hasTrackedSandboxState && !isExpired) ||
-    hasRecoverableFailedLifecycle;
+    hasRuntimeSandboxState(sessionRecord.sandboxState) &&
+    !isSessionExpired({ sandboxExpiresAt: runtimeSandboxExpiresAt });
 
   // If the lifecycle evaluator previously failed but runtime state is still
   // active, recover lifecycle state so UI does not get stuck in "Paused".
@@ -85,12 +88,26 @@ export async function GET(req: Request): Promise<Response> {
     }
   }
 
+  const effectiveIsExpired = isSessionExpired(effectiveSessionRecord);
+  const effectiveHasRuntimeState = hasRuntimeSandboxState(
+    effectiveSessionRecord.sandboxState,
+  );
+  const effectiveHasIdentity = hasSandboxIdentity(
+    effectiveSessionRecord.sandboxState,
+  );
+  const effectiveIsActive =
+    isLifecycleActiveState(effectiveSessionRecord.lifecycleState) &&
+    !effectiveIsExpired &&
+    (effectiveHasRuntimeState ||
+      (effectiveHasIdentity &&
+        effectiveSessionRecord.lifecycleState !== "active"));
+
   // Safety net: if the sandbox has stale runtime state (expired or overdue for
   // hibernation), kick the lifecycle to clean up DB state in the background.
   if (effectiveSessionRecord.lifecycleState === "active") {
     const now = Date.now();
     const dueAtMs = getLifecycleDueAtMs(effectiveSessionRecord);
-    if (isExpired || now >= dueAtMs) {
+    if (effectiveIsExpired || now >= dueAtMs) {
       kickSandboxLifecycleWorkflow({
         sessionId: effectiveSessionRecord.id,
         reason: "status-check-overdue",
@@ -99,7 +116,7 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   return Response.json({
-    status: isActive ? "active" : "no_sandbox",
+    status: effectiveIsActive ? "active" : "no_sandbox",
     hasSnapshot: !!effectiveSessionRecord.snapshotUrl,
     lifecycleVersion: effectiveSessionRecord.lifecycleVersion,
     lifecycle: {
