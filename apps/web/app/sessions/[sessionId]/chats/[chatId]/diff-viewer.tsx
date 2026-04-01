@@ -223,25 +223,41 @@ export function DiffViewer({ open, onOpenChange }: DiffViewerProps) {
   const [diffStyle, setDiffStyle] = useState<DiffStyle>("unified");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Radix Dialog wraps RemoveScroll around the Overlay (not the Content).
-  // The Content is passed as a "shard", so react-remove-scroll's document-level
-  // wheel handler evaluates whether to allow or block the scroll.  When the
-  // wheel event originates from inside a @pierre/diffs Shadow DOM element, the
-  // retargeted event.target can confuse the scroll-allowance heuristic, causing
-  // it to call preventDefault() and block vertical scrolling until the user
-  // clicks inside the panel.  Stopping native propagation on the scroll
-  // container prevents the event from reaching react-remove-scroll's document
-  // handler, letting the browser handle scrolling normally.
+  // Radix Dialog's modal scroll-lock (react-remove-scroll + DismissableLayer's
+  // body pointer-events:none) can prevent native wheel-scrolling inside
+  // @pierre/diffs Shadow DOM elements.  The retargeted event.target at the
+  // document level confuses the scroll-allowance heuristic, causing
+  // preventDefault() before the browser can scroll the container.
+  //
+  // Fix: intercept wheel events on the scroll container in the *capture* phase,
+  // call preventDefault() + stopPropagation() ourselves, and programmatically
+  // scroll the container.  This runs before any library handler and guarantees
+  // scrolling always works regardless of focus or shadow-DOM retargeting.
   useEffect(() => {
     const el = scrollContainerRef.current;
     if (!el) return;
 
-    const stopWheelPropagation = (e: WheelEvent) => {
+    const onWheel = (e: WheelEvent) => {
+      const { deltaY } = e;
+      if (deltaY === 0) return;
+
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      const maxScroll = scrollHeight - clientHeight;
+
+      // Already at the boundary — let the event propagate normally so the
+      // dialog overlay / body scroll-lock can handle it (e.g. rubber-band).
+      if (maxScroll <= 0) return;
+      if (deltaY < 0 && scrollTop <= 0) return;
+      if (deltaY > 0 && scrollTop >= maxScroll) return;
+
+      e.preventDefault();
       e.stopPropagation();
+      el.scrollTop += deltaY;
     };
 
-    el.addEventListener("wheel", stopWheelPropagation);
-    return () => el.removeEventListener("wheel", stopWheelPropagation);
+    // Capture phase so we run before react-remove-scroll's bubble handler.
+    el.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    return () => el.removeEventListener("wheel", onWheel, { capture: true });
   }, []);
 
   // Show stale indicator if sandbox is offline (even if data came from a live fetch earlier)
