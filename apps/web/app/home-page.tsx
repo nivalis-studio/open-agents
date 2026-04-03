@@ -77,7 +77,7 @@ export function HomePage({ hasSessionCookie, lastRepo }: HomePageProps) {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-background text-foreground">
+    <div className="flex min-h-[calc(100vh-var(--preview-banner-h,0px))] flex-col bg-background text-foreground mt-[var(--preview-banner-h,0px)]">
       <header className="flex items-center justify-between px-6 py-4">
         <div className="flex items-center gap-2 sm:justify-self-start">
           <span className="text-lg font-semibold">Open Harness</span>

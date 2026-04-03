@@ -61,21 +61,22 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans overflow-x-hidden antialiased flex h-dvh flex-col`}
+        className={`${geistSans.variable} ${geistMono.variable} font-sans overflow-x-hidden antialiased`}
+        {...(isPreviewDeployment
+          ? { style: { "--preview-banner-h": "32px" } as React.CSSProperties }
+          : {})}
       >
         <script
           dangerouslySetInnerHTML={{ __html: themeInitializationScript }}
         />
         {isPreviewDeployment && (
-          <div className="pointer-events-none z-50 flex shrink-0 items-center justify-center gap-2 bg-orange-400/4 backdrop-blur-sm px-4 py-1.5 text-center text-xs font-medium text-orange-500 dark:text-orange-400">
+          <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex h-[--preview-banner-h] items-center justify-center gap-2 bg-orange-400/4 backdrop-blur-sm px-4 text-center text-xs font-medium text-orange-500 dark:text-orange-400">
             <span>⚠️</span>
             <span>Preview Deployment — this is not production</span>
             <span>⚠️</span>
           </div>
         )}
-        <div className="flex min-h-0 flex-1 flex-col">
-          <Providers>{children}</Providers>
-        </div>
+        <Providers>{children}</Providers>
         <Analytics />
       </body>
     </html>
