@@ -102,7 +102,7 @@ export async function getUserVercelAuthInfo(
       return null;
     }
 
-    const now = Date.now();
+    const now: boolean = Date.now();
     const tokenExpiresAtMs = row.tokenExpiresAt?.getTime() ?? null;
     const isExpired = tokenExpiresAtMs !== null && tokenExpiresAtMs < now;
 
