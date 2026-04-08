@@ -1,99 +1,10 @@
 "use client";
 
-import {
-  EllipsisVertical,
-  ExternalLink,
-  GitPullRequest,
-  Loader2,
-} from "lucide-react";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { SidebarTrigger } from "@/components/ui/sidebar";
-import { useSessionLayout } from "./session-layout-context";
+import { Loader2 } from "lucide-react";
 
 export default function Loading() {
-  const { session } = useSessionLayout();
-
-  const hasRepo = Boolean(session.repoName);
-  const hasExistingPr = Boolean(session.prNumber);
-
   return (
     <>
-      {/* Header */}
-      <header className="border-b border-border px-3 py-2 lg:px-4 lg:py-3">
-        <div className="relative flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2 lg:gap-4">
-            <SidebarTrigger className="shrink-0" />
-            <div className="flex min-w-0 items-center gap-2 text-sm">
-              {session.repoName && (
-                <div className="hidden min-w-0 items-center gap-2 sm:flex">
-                  {session.cloneUrl ? (
-                    <Link
-                      href={`https://github.com/${session.repoOwner}/${session.repoName}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1 truncate font-medium text-foreground hover:underline"
-                    >
-                      {session.repoName}
-                      <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground" />
-                    </Link>
-                  ) : (
-                    <span className="truncate font-medium text-foreground">
-                      {session.repoName}
-                    </span>
-                  )}
-                  {session.branch && (
-                    <>
-                      <span className="text-muted-foreground/40">/</span>
-                      <span className="truncate text-muted-foreground">
-                        {session.branch}
-                      </span>
-                    </>
-                  )}
-                  <span className="text-muted-foreground/40">/</span>
-                </div>
-              )}
-              <span className="truncate font-medium text-foreground sm:font-normal sm:text-muted-foreground">
-                {session.title}
-              </span>
-            </div>
-          </div>
-
-          {/* Right-side actions */}
-          <div className="flex items-center gap-1 xl:gap-2">
-            <div className="flex items-center gap-1">
-              {hasRepo &&
-                (hasExistingPr ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 w-8 px-0 xl:w-auto xl:px-3"
-                    disabled
-                  >
-                    <GitPullRequest className="h-4 w-4 xl:mr-2" />
-                    <span className="hidden xl:inline">
-                      View PR #{session.prNumber}
-                    </span>
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 w-8 px-0 xl:w-auto xl:px-3"
-                    disabled
-                  >
-                    <GitPullRequest className="h-4 w-4 xl:mr-2" />
-                    <span className="hidden xl:inline">Create PR</span>
-                  </Button>
-                ))}
-              <Button variant="ghost" size="icon" className="h-8 w-8" disabled>
-                <EllipsisVertical className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* Messages area with centered spinner */}
       <div className="relative flex-1 overflow-hidden">
         <div className="flex h-full items-center justify-center">

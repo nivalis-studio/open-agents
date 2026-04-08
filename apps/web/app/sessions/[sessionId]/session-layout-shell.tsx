@@ -71,23 +71,13 @@ export function SessionLayoutShell({
     [initialSession, chats, chatsLoading, createChat, switchChat, deleteChat, renameChat],
   );
 
-  // hasDiff is approximated from session-level data; the per-chat diff context
-  // will provide the real value once the chat page mounts.
-  const hasDiff =
-    (initialSession.linesAdded ?? 0) > 0 ||
-    (initialSession.linesRemoved ?? 0) > 0 ||
-    initialSession.cloneUrl !== null;
-
   return (
     <SessionLayoutContext.Provider value={layoutContext}>
       <GitPanelProvider>
         {/* Persistent header + tabs — never unmount during chat switches */}
         <SessionHeader />
         {activeChatId && (
-          <ChatTabs
-            activeChatId={activeChatId}
-            hasDiff={hasDiff}
-          />
+          <ChatTabs activeChatId={activeChatId} />
         )}
         {/* Per-chat page content fills remaining vertical space */}
         <div className="relative min-h-0 flex-1 overflow-hidden">

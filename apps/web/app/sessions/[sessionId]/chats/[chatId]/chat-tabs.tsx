@@ -22,13 +22,10 @@ import { useGitPanel } from "./git-panel-context";
 
 type ChatTabsProps = {
   activeChatId: string;
-  /** Whether diff data is available (controls whether the Changes tab appears) */
-  hasDiff: boolean;
 };
 
 export function ChatTabs({
   activeChatId,
-  hasDiff,
 }: ChatTabsProps) {
   const { chats, createChat, switchChat, deleteChat, renameChat } =
     useSessionLayout();
@@ -179,8 +176,8 @@ export function ChatTabs({
             );
           })}
 
-          {/* Changes tab — hidden when user explicitly dismisses it */}
-          {!changesTabDismissed && (hasDiff || activeView === "diff") && (
+          {/* Changes tab — only shown when a diff file is opened, hidden when dismissed */}
+          {!changesTabDismissed && activeView === "diff" && (
             <button
               type="button"
               onClick={() => setActiveView("diff")}
