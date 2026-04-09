@@ -282,6 +282,27 @@ export async function POST(_req: Request, context: RouteContext) {
       );
     }
 
+    // Ensure code-server user settings exist (auto-trust workspace, skip Welcome tab)
+    const settingsDir = "/home/user/.local/share/code-server/User";
+    const settingsPath = `${settingsDir}/settings.json`;
+    try {
+      await sandbox.mkdir(settingsDir, { recursive: true });
+      await sandbox.writeFile(
+        settingsPath,
+        JSON.stringify(
+          {
+            "security.workspace.trust.enabled": false,
+            "workbench.startupEditor": "readme",
+          },
+          null,
+          2,
+        ),
+        "utf-8",
+      );
+    } catch {
+      // Best-effort — code-server will still work without these settings
+    }
+
     // Launch code-server in detached mode
     const launchCommand = [
       `printf '%s' "$$" > ${shellQuote(CODE_SERVER_PIDFILE)}`,
