@@ -7,6 +7,9 @@ import {
   FileText,
   Loader2,
   RefreshCw,
+  SquareDot,
+  SquareMinus,
+  SquarePlus,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { DiffFile } from "@/app/api/sessions/[sessionId]/diff/route";
@@ -63,31 +66,15 @@ function StaleBanner({ cachedAt }: { cachedAt: Date | null }) {
   );
 }
 
-function StatusBadge({ status }: { status: DiffFile["status"] }) {
-  const styles = {
-    added: "bg-green-500/20 text-green-700 dark:text-green-400",
-    modified: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400",
-    deleted: "bg-red-500/20 text-red-700 dark:text-red-400",
-    renamed: "bg-yellow-500/20 text-yellow-700 dark:text-yellow-400",
-  };
-
-  const labels = {
-    added: "New",
-    modified: "Modified",
-    deleted: "Deleted",
-    renamed: "Renamed",
-  };
-
-  return (
-    <span
-      className={cn(
-        "rounded px-1.5 py-0.5 text-[10px] font-medium uppercase",
-        styles[status],
-      )}
-    >
-      {labels[status]}
-    </span>
-  );
+function FileStatusIcon({ status }: { status: DiffFile["status"] }) {
+  if (status === "added") {
+    return <SquarePlus className="h-4 w-4 shrink-0 text-green-500" />;
+  }
+  if (status === "deleted") {
+    return <SquareMinus className="h-4 w-4 shrink-0 text-red-500" />;
+  }
+  // modified + renamed
+  return <SquareDot className="h-4 w-4 shrink-0 text-yellow-500" />;
 }
 
 /**
@@ -181,10 +168,10 @@ export function DiffTabView() {
         <div className="flex min-w-0 items-center gap-2">
           {isFileVisibleInScope ? (
             <>
+              <FileStatusIcon status={file.status} />
               <span className="shrink-0 text-sm font-medium font-mono">
                 {fileName}
               </span>
-              <StatusBadge status={file.status} />
               <div className="flex shrink-0 items-center gap-1.5 text-xs">
                 {file.additions > 0 && (
                   <span className="text-green-600 dark:text-green-500">
