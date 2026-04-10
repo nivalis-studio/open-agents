@@ -433,6 +433,8 @@ export default function ProfilePage() {
   const topRepos = data?.insights?.topRepositories ?? null;
 
   return (
+    <>
+    <h1 className="text-2xl font-semibold">Profile</h1>
     <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
       {/* Left sidebar */}
       <div className="w-full shrink-0 lg:w-56">
@@ -508,5 +510,6 @@ export default function ProfilePage() {
         )}
       </div>
     </div>
+    </>
   );
 }

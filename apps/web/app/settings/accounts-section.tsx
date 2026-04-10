@@ -138,22 +138,33 @@ function useGitHubReturnToast() {
 
 export function AccountsSectionSkeleton() {
   return (
-    <div className="space-y-4">
-      <div className="space-y-1.5">
-        <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Connected Accounts</h3>
-        <p className="text-sm text-muted-foreground">
-          Manage GitHub App installations to grant repository access.
-        </p>
-      </div>
-      <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/10 p-4">
-        <div className="flex items-center gap-3">
-          <Skeleton className="h-8 w-8 rounded-full" />
-          <div className="space-y-1">
-            <Skeleton className="h-4 w-20" />
-            <Skeleton className="h-3 w-32" />
+    <div className="space-y-6">
+      {/* GitHub section skeleton */}
+      <div className="rounded-lg border border-border/50 bg-muted/10">
+        <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-5 w-5 rounded" />
+            <Skeleton className="h-4 w-16" />
           </div>
+          <Skeleton className="h-8 w-20" />
         </div>
-        <Skeleton className="h-9 w-24" />
+        <div className="space-y-2 p-4">
+          {[1, 2].map((i) => (
+            <div
+              key={i}
+              className="flex items-center justify-between rounded-lg border border-border/50 p-3"
+            >
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-8 w-8 rounded-full" />
+                <div className="space-y-1">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              </div>
+              <Skeleton className="h-8 w-20" />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -166,7 +177,7 @@ function OrgRow({ org }: { org: OrgInstallStatus }) {
   const isOrg = org.type === "Organization";
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 p-3">
       <div className="flex items-center gap-3 min-w-0">
         {/* Avatar */}
         {org.avatarUrl ? (
@@ -199,8 +210,8 @@ function OrgRow({ org }: { org: OrgInstallStatus }) {
                 <CheckCircle2 className="size-3 text-green-500" />
                 Installed
                 {org.repositorySelection === "all"
-                  ? " - all repositories"
-                  : " - selected repositories"}
+                  ? " · all repositories"
+                  : " · selected repositories"}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1">
@@ -306,77 +317,128 @@ export function AccountsSection() {
     return <AccountsSectionSkeleton />;
   }
 
-  // ── State: no GitHub connected at all ──
-  // Single flow: install the GitHub App, which also handles OAuth authorization
-  // when "Request user authorization during installation" is enabled.
-  if (!hasGitHub) {
-    return (
-      <div className="space-y-4">
-        <div className="space-y-1.5">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Connected Accounts</h3>
-          <p className="text-sm text-muted-foreground">
-            Install the GitHub App to grant repository access. You will
-            authorize and select repositories in one step on GitHub.
-          </p>
-        </div>
-        <div className="flex items-center justify-between rounded-lg border border-border/50 bg-muted/10 p-4">
-          <div className="flex items-center gap-3">
-            <GitHubIcon className="h-8 w-8" />
-            <div>
-              <p className="text-sm font-medium">GitHub</p>
-              <p className="text-xs text-muted-foreground">
-                Connect to access private repositories
-              </p>
-            </div>
-          </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={startGitHubInstallFromSettings}
-          >
-            Connect
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  return (
+    <div className="space-y-6">
+      {/* ── GitHub connection ── */}
+      <GitHubConnection
+        hasGitHub={hasGitHub}
+        orgs={orgs ?? null}
+        orgsLoading={orgsLoading}
+        isRefreshing={isRefreshing}
+        unlinking={unlinking}
+        onRefresh={handleRefresh}
+        onUnlink={handleUnlink}
+      />
 
-  // ── State: account linked, show org chooser ──
+      {/* ── Future: MCP connections would go here ── */}
+      {/* <McpConnectionsSection /> */}
+    </div>
+  );
+}
+
+// ── GitHub connection block ────────────────────────────────────────────────
+
+function GitHubConnection({
+  hasGitHub,
+  orgs,
+  orgsLoading,
+  isRefreshing,
+  unlinking,
+  onRefresh,
+  onUnlink,
+}: {
+  hasGitHub: boolean;
+  orgs: OrgInstallStatus[] | null;
+  orgsLoading: boolean;
+  isRefreshing: boolean;
+  unlinking: boolean;
+  onRefresh: () => void;
+  onUnlink: () => void;
+}) {
   const installedCount =
     orgs?.filter((o) => o.installStatus === "installed").length ?? 0;
-  const totalCount = orgs?.length ?? 0;
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1.5">
-          <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Connected Accounts</h3>
-          <p className="text-sm text-muted-foreground">
-            {installedCount > 0
-              ? `GitHub App installed on ${installedCount} of ${totalCount} account${totalCount !== 1 ? "s" : ""}.`
-              : "Install the GitHub App on your accounts to enable repository access."}
-          </p>
+    <div className="rounded-lg border border-border/50 bg-muted/10">
+      {/* Header: GitHub branding + actions */}
+      <div className="flex items-center justify-between border-b border-border/50 px-4 py-3">
+        <div className="flex items-center gap-2.5">
+          <GitHubIcon className="h-5 w-5" />
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">GitHub</span>
+            {hasGitHub && (
+              <span className="text-xs text-muted-foreground">
+                · {installedCount} installed
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing || orgsLoading}
-          >
-            <RefreshCw
-              className={`size-4 ${isRefreshing ? "animate-spin" : ""}`}
-            />
-          </Button>
+        <div className="flex items-center gap-1.5">
+          {hasGitHub && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRefresh}
+                disabled={isRefreshing || orgsLoading}
+                className="h-7 w-7 p-0"
+              >
+                <RefreshCw
+                  className={`size-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+                />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={startGitHubInstallFromSettings}
+                className="h-7 text-xs"
+              >
+                Add account
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onUnlink}
+                disabled={unlinking}
+                className="h-7 text-xs text-muted-foreground"
+              >
+                {unlinking ? (
+                  <>
+                    <Loader2 className="mr-1 size-3 animate-spin" />
+                    Disconnecting…
+                  </>
+                ) : (
+                  "Disconnect"
+                )}
+              </Button>
+            </>
+          )}
+          {!hasGitHub && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={startGitHubInstallFromSettings}
+              className="h-7 text-xs"
+            >
+              Connect
+            </Button>
+          )}
         </div>
       </div>
-      <div className="space-y-3">
-        {orgsLoading && !orgs ? (
+
+      {/* Body */}
+      <div className="p-4">
+        {!hasGitHub ? (
+          <p className="text-sm text-muted-foreground">
+            Connect GitHub to access private repositories and enable
+            installations for your accounts and organizations.
+          </p>
+        ) : orgsLoading && !orgs ? (
           <div className="space-y-2">
-            {[1, 2, 3].map((i) => (
+            {[1, 2].map((i) => (
               <div
                 key={i}
-                className="flex items-center justify-between rounded-lg border p-3"
+                className="flex items-center justify-between rounded-lg border border-border/50 p-3"
               >
                 <div className="flex items-center gap-3">
                   <Skeleton className="h-8 w-8 rounded-full" />
@@ -394,42 +456,17 @@ export function AccountsSection() {
             {orgs.map((org) => (
               <OrgRow key={org.login} org={org} />
             ))}
+            <RequestAccessGuidance />
           </div>
         ) : (
-          <div className="rounded-lg border p-4 text-center text-sm text-muted-foreground">
-            <p>No accounts found.</p>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">
+              No accounts found. Install the GitHub App to an account or
+              organization.
+            </p>
+            <RequestAccessGuidance />
           </div>
         )}
-
-        <RequestAccessGuidance />
-
-        {/* Footer actions */}
-        <div className="flex items-center justify-between pt-1">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={startGitHubInstallFromSettings}
-          >
-            <GitHubIcon className="mr-1.5 size-3.5" />
-            Install to another account
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleUnlink}
-            disabled={unlinking}
-            className="text-muted-foreground"
-          >
-            {unlinking ? (
-              <>
-                <Loader2 className="mr-1.5 size-3.5 animate-spin" />
-                Disconnecting...
-              </>
-            ) : (
-              "Disconnect GitHub"
-            )}
-          </Button>
-        </div>
       </div>
     </div>
   );
