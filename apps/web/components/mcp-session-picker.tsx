@@ -1,6 +1,7 @@
 "use client";
 
 import { Plug, Settings2 } from "lucide-react";
+import { McpProviderIcon } from "@/components/mcp-icons";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import useSWR from "swr";
@@ -126,7 +127,10 @@ export function McpSessionPicker({
                 }
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="inline-block size-2 shrink-0 rounded-full bg-green-500" />
+                  <McpProviderIcon
+                    provider={conn.provider ?? "custom"}
+                    className="size-4"
+                  />
                   <span className="text-sm truncate">{conn.name}</span>
                 </div>
                 <Switch

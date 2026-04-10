@@ -1,5 +1,6 @@
 "use client";
 
+import { McpProviderIcon } from "@/components/mcp-icons";
 import {
   ExternalLink,
   Loader2,
@@ -72,58 +73,15 @@ const PREDEFINED_PROVIDERS: MCPProvider[] = [
     id: "notion",
     name: "Notion",
     description: "Pages, databases, and workspace search",
-    icon: <NotionIcon className="h-5 w-5" />,
+    icon: <McpProviderIcon provider="notion" className="size-8" />,
   },
   {
     id: "granola",
     name: "Granola",
     description: "Meeting notes and action items",
-    icon: <GranolaIcon className="h-5 w-5" />,
+    icon: <McpProviderIcon provider="granola" className="size-8" />,
   },
 ];
-
-// ── Icons ──────────────────────────────────────────────────────────────────
-
-function NotionIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M4 4.5A2.5 2.5 0 016.5 2H13l5 5v10.5a2.5 2.5 0 01-2.5 2.5h-9A2.5 2.5 0 014 17.5v-13z"
-        opacity="0.1"
-      />
-      <text
-        x="12"
-        y="16"
-        textAnchor="middle"
-        fontSize="12"
-        fontWeight="700"
-        fontFamily="serif"
-        fill="currentColor"
-      >
-        N
-      </text>
-    </svg>
-  );
-}
-
-function GranolaIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <circle cx="12" cy="12" r="9" opacity="0.15" />
-      <circle cx="12" cy="12" r="5" />
-    </svg>
-  );
-}
 
 // ── Status dot ─────────────────────────────────────────────────────────────
 
@@ -242,7 +200,7 @@ function ProviderCard({
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-4 py-3.5">
       <div className="flex items-center gap-3 min-w-0">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-border/50 bg-muted/30">
+        <div className="flex h-9 w-9 items-center justify-center">
           {provider.icon}
         </div>
         <div className="min-w-0">
