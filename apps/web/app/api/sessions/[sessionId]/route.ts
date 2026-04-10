@@ -15,6 +15,7 @@ interface UpdateSessionRequest {
   linesRemoved?: number;
   prNumber?: number;
   prStatus?: "open" | "merged" | "closed";
+  enabledMcpConnectionIds?: string[];
 }
 
 export async function GET(

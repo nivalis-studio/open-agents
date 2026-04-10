@@ -62,6 +62,7 @@ import {
 import { FileSuggestionsDropdown } from "@/components/file-suggestions-dropdown";
 import { ImageAttachmentsPreview } from "@/components/image-attachments-preview";
 import { TextAttachmentsPreview } from "@/components/text-attachments-preview";
+import { McpSessionPicker } from "@/components/mcp-session-picker";
 import { ModelSelectorCompact } from "@/components/model-selector-compact";
 import { useInlineQuestion } from "@/components/inline-question-input";
 import { SlashCommandDropdown } from "@/components/slash-command-dropdown";
@@ -4160,6 +4161,12 @@ export function SessionChatContent({
                               }
                               contextLimit={
                                 contextLimit ?? DEFAULT_CONTEXT_LIMIT
+                              }
+                            />
+                            <McpSessionPicker
+                              sessionId={session.id}
+                              enabledMcpConnectionIds={
+                                session.enabledMcpConnectionIds ?? []
                               }
                             />
                           </div>

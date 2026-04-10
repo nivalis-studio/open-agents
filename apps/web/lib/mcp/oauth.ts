@@ -97,7 +97,7 @@ export async function registerOAuthClient(
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     throw new Error(
-      `Dynamic client registration failed (${response.status}): ${text}`,
+      `Dynamic client registration failed at ${registrationEndpoint} (HTTP ${response.status} ${response.statusText}): ${text || "empty response body"}`,
     );
   }
 

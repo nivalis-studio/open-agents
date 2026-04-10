@@ -1,9 +1,6 @@
 "use client";
 
 import {
-  AlertCircle,
-  CheckCircle2,
-  Circle,
   ExternalLink,
   Loader2,
   Plus,
@@ -46,7 +43,7 @@ interface MCPConnectionSafe {
   url: string;
   transportType: string;
   authType: string;
-  status: "connected" | "disconnected" | "needs_auth" | "error";
+  status: "active" | "needs_auth" | "error" | "unchecked";
   enabledByDefault: boolean;
   lastError: string | null;
   oauthScopes: string[] | null;
@@ -147,39 +144,43 @@ function GranolaIcon({ className }: { className?: string }) {
   );
 }
 
-// ── Status badge ───────────────────────────────────────────────────────────
+// ── Status dot ─────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: MCPConnectionSafe["status"] }) {
+function StatusDot({
+  status,
+  lastError,
+}: {
+  status: MCPConnectionSafe["status"] | "unchecked" | undefined;
+  lastError?: string | null;
+}) {
+  let dotClass: string;
+  let tooltip: string;
+
   switch (status) {
-    case "connected":
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-          <CheckCircle2 className="size-3" />
-          Connected
-        </span>
-      );
-    case "needs_auth":
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-          <AlertCircle className="size-3" />
-          Needs auth
-        </span>
-      );
+    case "active":
+      dotClass = "bg-green-500";
+      tooltip = "Connected";
+      break;
     case "error":
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
-          <AlertCircle className="size-3" />
-          Error
-        </span>
-      );
+      dotClass = "bg-red-500";
+      tooltip = lastError || "Connection error";
+      break;
+    case "needs_auth":
+      dotClass = "bg-amber-500";
+      tooltip = "Authorization required";
+      break;
     default:
-      return (
-        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-          <Circle className="size-3" />
-          Not connected
-        </span>
-      );
+      dotClass = "border-2 border-muted-foreground/30";
+      tooltip = "Not connected";
+      break;
   }
+
+  return (
+    <span
+      className={`inline-block size-2 shrink-0 rounded-full ${dotClass}`}
+      title={tooltip}
+    />
+  );
 }
 
 // ── Auth type label ────────────────────────────────────────────────────────
@@ -254,8 +255,8 @@ function ProviderCard({
   onDisconnect: (connectionId: string) => void;
   loading: boolean;
 }) {
-  const status = connection?.status ?? "disconnected";
-  const isConnected = status === "connected";
+  const status = connection?.status;
+  const isConnected = status === "active";
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/50 px-4 py-3.5">
@@ -264,14 +265,14 @@ function ProviderCard({
           {provider.icon}
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-medium truncate">{provider.name}</p>
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium truncate">{provider.name}</p>
+            <StatusDot status={status} lastError={connection?.lastError} />
+          </div>
           <div className="flex items-center gap-2 mt-0.5">
             <p className="text-xs text-muted-foreground truncate">
               {provider.description}
             </p>
-          </div>
-          <div className="mt-1">
-            <StatusBadge status={status} />
           </div>
         </div>
       </div>
@@ -360,19 +361,15 @@ function CustomConnectionRow({
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <p className="text-sm font-medium truncate">{connection.name}</p>
+              <StatusDot
+                status={connection.status}
+                lastError={connection.lastError}
+              />
               <AuthTypeBadge authType={connection.authType} />
             </div>
             <p className="text-xs text-muted-foreground truncate mt-0.5">
               {connection.url}
             </p>
-            <div className="mt-1">
-              <StatusBadge status={connection.status} />
-              {connection.lastError && (
-                <span className="ml-2 text-[10px] text-red-500 truncate">
-                  {connection.lastError}
-                </span>
-              )}
-            </div>
           </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
@@ -886,7 +883,7 @@ export function McpConnectionsSection() {
     ) ?? [];
 
   const connectedCount =
-    connections?.filter((c) => c.status === "connected").length ?? 0;
+    connections?.filter((c) => c.status === "active").length ?? 0;
 
   return (
     <div className="rounded-lg border border-border/50 bg-muted/10">
