@@ -157,11 +157,18 @@ export async function commitAndPushSessionChanges(params: {
 
 export async function discardSessionUncommittedChanges(params: {
   sessionId: string;
+  filePath?: string;
+  oldPath?: string;
 }): Promise<void> {
   const response = await fetch(
     `/api/sessions/${params.sessionId}/discard-uncommitted`,
     {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...(params.filePath ? { filePath: params.filePath } : {}),
+        ...(params.oldPath ? { oldPath: params.oldPath } : {}),
+      }),
     },
   );
 

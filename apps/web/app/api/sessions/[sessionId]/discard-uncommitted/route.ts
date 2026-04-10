@@ -9,6 +9,11 @@ type RouteContext = {
   params: Promise<{ sessionId: string }>;
 };
 
+type DiscardRequest = {
+  filePath?: string;
+  oldPath?: string;
+};
+
 function toGitErrorMessage(result: {
   stderr?: string;
   stdout?: string;
@@ -16,7 +21,11 @@ function toGitErrorMessage(result: {
   return result.stderr?.trim() || result.stdout?.trim() || "Git command failed";
 }
 
-function isEmptyIndexError(message: string): boolean {
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function isPathspecError(message: string): boolean {
   const normalized = message.toLowerCase();
   return (
     normalized.includes("pathspec") &&
@@ -24,10 +33,83 @@ function isEmptyIndexError(message: string): boolean {
   );
 }
 
-export async function POST(_req: Request, context: RouteContext) {
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+function isValidRepoRelativePath(value: string): boolean {
+  if (!value || value.startsWith("/") || value.includes("\0")) {
+    return false;
+  }
+
+  return value
+    .split("/")
+    .every((segment) => segment !== "" && segment !== "." && segment !== "..");
+}
+
+async function discardPathChanges(params: {
+  cwd: string;
+  path: string;
+  hasHead: boolean;
+  sandbox: Awaited<ReturnType<typeof connectSandbox>>;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { cwd, path, hasHead, sandbox } = params;
+  const quotedPath = shellQuote(path);
+
+  if (hasHead) {
+    const restoreResult = await sandbox.exec(
+      `git restore --source=HEAD --staged --worktree -- ${quotedPath}`,
+      cwd,
+      30000,
+    );
+    const restoreError = toGitErrorMessage(restoreResult);
+    if (!restoreResult.success && !isPathspecError(restoreError)) {
+      return { ok: false, error: restoreError };
+    }
+  } else {
+    const clearIndexResult = await sandbox.exec(
+      `git rm -rf --cached -- ${quotedPath}`,
+      cwd,
+      30000,
+    );
+    const clearIndexError = toGitErrorMessage(clearIndexResult);
+    if (!clearIndexResult.success && !isPathspecError(clearIndexError)) {
+      return { ok: false, error: clearIndexError };
+    }
+  }
+
+  const cleanResult = await sandbox.exec(
+    `git clean -fd -- ${quotedPath}`,
+    cwd,
+    30000,
+  );
+  if (!cleanResult.success) {
+    return { ok: false, error: toGitErrorMessage(cleanResult) };
+  }
+
+  return { ok: true };
+}
+
+export async function POST(req: Request, context: RouteContext) {
   const authResult = await requireAuthenticatedUser();
   if (!authResult.ok) {
     return authResult.response;
+  }
+
+  const body = ((await req.json().catch(() => ({}))) ?? {}) as DiscardRequest;
+  const filePath =
+    typeof body.filePath === "string" ? body.filePath : undefined;
+  const oldPath = typeof body.oldPath === "string" ? body.oldPath : undefined;
+  const targetPaths = Array.from(
+    new Set([filePath, oldPath].filter(isNonEmptyString)),
+  );
+
+  if (filePath && !isValidRepoRelativePath(filePath)) {
+    return Response.json({ error: "Invalid file path" }, { status: 400 });
+  }
+
+  if (oldPath && !isValidRepoRelativePath(oldPath)) {
+    return Response.json({ error: "Invalid old file path" }, { status: 400 });
   }
 
   const { sessionId } = await context.params;
@@ -68,7 +150,21 @@ export async function POST(_req: Request, context: RouteContext) {
       cwd,
       10000,
     );
-    if (hasHeadResult.success) {
+    const hasHead = hasHeadResult.success;
+
+    if (filePath) {
+      for (const targetPath of targetPaths) {
+        const result = await discardPathChanges({
+          cwd,
+          path: targetPath,
+          hasHead,
+          sandbox,
+        });
+        if (!result.ok) {
+          return Response.json({ error: result.error }, { status: 500 });
+        }
+      }
+    } else if (hasHead) {
       const resetResult = await sandbox.exec(
         "git reset --hard HEAD",
         cwd,
@@ -86,30 +182,28 @@ export async function POST(_req: Request, context: RouteContext) {
         cwd,
         30000,
       );
-      if (
-        !clearIndexResult.success &&
-        !isEmptyIndexError(toGitErrorMessage(clearIndexResult))
-      ) {
+      const clearIndexError = toGitErrorMessage(clearIndexResult);
+      if (!clearIndexResult.success && !isPathspecError(clearIndexError)) {
+        return Response.json({ error: clearIndexError }, { status: 500 });
+      }
+    }
+
+    if (!filePath) {
+      const cleanResult = await sandbox.exec("git clean -fd", cwd, 30000);
+      if (!cleanResult.success) {
         return Response.json(
-          { error: toGitErrorMessage(clearIndexResult) },
+          { error: toGitErrorMessage(cleanResult) },
           { status: 500 },
         );
       }
     }
 
-    const cleanResult = await sandbox.exec("git clean -fd", cwd, 30000);
-    if (!cleanResult.success) {
-      return Response.json(
-        { error: toGitErrorMessage(cleanResult) },
-        { status: 500 },
-      );
-    }
-
-    const statusResult = await sandbox.exec(
-      "git status --porcelain",
-      cwd,
-      10000,
-    );
+    const statusCommand = filePath
+      ? `git status --porcelain -- ${targetPaths
+          .map((path) => shellQuote(path))
+          .join(" ")}`
+      : "git status --porcelain";
+    const statusResult = await sandbox.exec(statusCommand, cwd, 10000);
     if (!statusResult.success) {
       return Response.json(
         { error: toGitErrorMessage(statusResult) },
