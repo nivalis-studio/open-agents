@@ -174,10 +174,12 @@ function DiffFileList({
   files,
   onDiscardFile,
   discardingFilePath,
+  discardDisabled,
 }: {
   files: DiffFile[];
   onDiscardFile: (file: DiffFile) => void;
   discardingFilePath: string | null;
+  discardDisabled: boolean;
 }) {
   const { openDiffToFile, diffScope } = useGitPanel();
 
@@ -244,7 +246,7 @@ function DiffFileList({
                 <button
                   type="button"
                   onClick={() => onDiscardFile(file)}
-                  disabled={discardingFilePath === file.path}
+                  disabled={discardDisabled || discardingFilePath === file.path}
                   aria-label={`Discard changes in ${file.path}`}
                   className="rounded p-1 text-muted-foreground opacity-0 transition hover:text-destructive group-hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-100"
                 >
@@ -1915,6 +1917,7 @@ export function GitPanel(props: GitPanelProps) {
                       ? discardingFilePath
                       : null
                   }
+                  discardDisabled={isDiscardingChanges || isAgentWorking}
                 />
               ) : (
                 <div className="flex w-full flex-col items-center gap-1.5 rounded-lg border border-dashed border-muted-foreground/25 py-8 text-center">

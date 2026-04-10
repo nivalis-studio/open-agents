@@ -189,4 +189,69 @@ describe("/api/sessions/[sessionId]/discard-uncommitted", () => {
       "git status --porcelain -- 'new-file.txt'",
     ]);
   });
+
+  test("rejects invalid JSON instead of discarding the whole repo", async () => {
+    const { POST } = await loadRouteModule();
+
+    const response = await POST(
+      new Request(
+        "http://localhost/api/sessions/session-1/discard-uncommitted",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{",
+        },
+      ),
+      createContext(),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid JSON body" });
+    expect(execCalls).toEqual([]);
+    expect(connectSandboxMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects file-scoped requests with an empty file path", async () => {
+    const { POST } = await loadRouteModule();
+
+    const response = await POST(
+      new Request(
+        "http://localhost/api/sessions/session-1/discard-uncommitted",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ filePath: "" }),
+        },
+      ),
+      createContext(),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid file path" });
+    expect(execCalls).toEqual([]);
+    expect(connectSandboxMock).not.toHaveBeenCalled();
+  });
+
+  test("rejects oldPath without filePath instead of discarding the whole repo", async () => {
+    const { POST } = await loadRouteModule();
+
+    const response = await POST(
+      new Request(
+        "http://localhost/api/sessions/session-1/discard-uncommitted",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ oldPath: "renamed-file.txt" }),
+        },
+      ),
+      createContext(),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({
+      error: "filePath is required when oldPath is provided",
+    });
+    expect(execCalls).toEqual([]);
+    expect(connectSandboxMock).not.toHaveBeenCalled();
+  });
 });

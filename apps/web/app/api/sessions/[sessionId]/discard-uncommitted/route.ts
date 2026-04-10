@@ -14,6 +14,10 @@ type DiscardRequest = {
   oldPath?: string;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 function toGitErrorMessage(result: {
   stderr?: string;
   stdout?: string;
@@ -103,13 +107,41 @@ export async function POST(req: Request, context: RouteContext) {
     return authResult.response;
   }
 
-  const body = ((await req.json().catch(() => ({}))) ?? {}) as DiscardRequest;
+  let parsedBody: unknown;
+  try {
+    parsedBody = await req.json();
+  } catch {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  if (!isRecord(parsedBody)) {
+    return Response.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const body: DiscardRequest = parsedBody;
+  const hasFilePathField = typeof body.filePath !== "undefined";
+  const hasOldPathField = typeof body.oldPath !== "undefined";
   const filePath =
     typeof body.filePath === "string" ? body.filePath : undefined;
   const oldPath = typeof body.oldPath === "string" ? body.oldPath : undefined;
   const targetPaths = Array.from(
     new Set([filePath, oldPath].filter(isNonEmptyString)),
   );
+
+  if (hasFilePathField && !isNonEmptyString(filePath)) {
+    return Response.json({ error: "Invalid file path" }, { status: 400 });
+  }
+
+  if (hasOldPathField && !isNonEmptyString(oldPath)) {
+    return Response.json({ error: "Invalid old file path" }, { status: 400 });
+  }
+
+  if (!filePath && oldPath) {
+    return Response.json(
+      { error: "filePath is required when oldPath is provided" },
+      { status: 400 },
+    );
+  }
 
   if (filePath && !isValidRepoRelativePath(filePath)) {
     return Response.json({ error: "Invalid file path" }, { status: 400 });
