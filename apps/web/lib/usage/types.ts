@@ -11,6 +11,7 @@ export interface UsageEfficiencyInsights {
   mainAssistantTurnCount: number;
   averageTokensPerMainTurn: number;
   largestMainTurnTokens: number;
+  longestAssistantTurnMs: number | null;
   toolCallsPerMainTurn: number;
   cacheReadRatio: number;
 }

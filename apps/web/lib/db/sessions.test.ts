@@ -6,13 +6,6 @@ let upsertMode: UpsertMode = "inserted";
 
 // Rows returned by the fakeDb select() chain (used by getUsedSessionTitles)
 let fakeSelectRows: { title: string }[] = [];
-let fakeRepoTimingRows: {
-  chatId: string;
-  id: string;
-  role: "user" | "assistant";
-  parts: unknown;
-  createdAt: Date;
-}[] = [];
 
 const fakeInsertedMessage = {
   id: "message-1",
@@ -23,16 +16,10 @@ const fakeInsertedMessage = {
 };
 
 const fakeDb = {
+  // Fluent select chain: db.select({…}).from(table).where(condition)
   select: (_columns: unknown) => ({
     from: (_table: unknown) => ({
       where: async (_condition: unknown) => fakeSelectRows,
-      innerJoin: (_joinedTable: unknown, _condition: unknown) => ({
-        innerJoin: (_nextJoinedTable: unknown, _nextCondition: unknown) => ({
-          where: (_joinedWhereCondition: unknown) => ({
-            orderBy: async (..._orderBy: unknown[]) => fakeRepoTimingRows,
-          }),
-        }),
-      }),
     }),
   }),
 
@@ -167,115 +154,6 @@ describe("getUsedSessionTitles", () => {
     const result = await getUsedSessionTitles("user-1");
     expect(result.size).toBe(1);
     expect(result.has("Rome")).toBe(true);
-  });
-});
-
-describe("getLongestRepoAssistantTurnDurationMs", () => {
-  beforeEach(() => {
-    fakeRepoTimingRows = [];
-  });
-
-  test("returns the longest assistant turn and ignores ask_user_question turns", async () => {
-    const { getLongestRepoAssistantTurnDurationMs } =
-      await sessionsModulePromise;
-
-    fakeRepoTimingRows = [
-      {
-        chatId: "chat-1",
-        id: "user-1",
-        role: "user",
-        parts: { id: "user-1", role: "user", parts: [] },
-        createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      },
-      {
-        chatId: "chat-1",
-        id: "assistant-1",
-        role: "assistant",
-        parts: {
-          id: "assistant-1",
-          role: "assistant",
-          parts: [{ type: "text", text: "Done." }],
-        },
-        createdAt: new Date("2026-01-01T00:00:05.000Z"),
-      },
-      {
-        chatId: "chat-1",
-        id: "user-2",
-        role: "user",
-        parts: { id: "user-2", role: "user", parts: [] },
-        createdAt: new Date("2026-01-01T00:01:00.000Z"),
-      },
-      {
-        chatId: "chat-1",
-        id: "assistant-2",
-        role: "assistant",
-        parts: {
-          id: "assistant-2",
-          role: "assistant",
-          parts: [
-            { type: "text", text: "Question" },
-            {
-              type: "tool-ask_user_question",
-              toolName: "ask_user_question",
-            },
-          ],
-        },
-        createdAt: new Date("2026-01-01T00:02:00.000Z"),
-      },
-      {
-        chatId: "chat-2",
-        id: "user-3",
-        role: "user",
-        parts: { id: "user-3", role: "user", parts: [] },
-        createdAt: new Date("2026-01-01T00:03:00.000Z"),
-      },
-      {
-        chatId: "chat-2",
-        id: "assistant-3",
-        role: "assistant",
-        parts: {
-          id: "assistant-3",
-          role: "assistant",
-          parts: [{ type: "text", text: "Longer reply." }],
-        },
-        createdAt: new Date("2026-01-01T00:03:20.000Z"),
-      },
-    ];
-
-    expect(
-      await getLongestRepoAssistantTurnDurationMs({
-        userId: "user-1",
-        repoOwner: "vercel",
-        repoName: "open-harness",
-      }),
-    ).toBe(20_000);
-  });
-
-  test("returns null when no eligible assistant turn exists", async () => {
-    const { getLongestRepoAssistantTurnDurationMs } =
-      await sessionsModulePromise;
-
-    fakeRepoTimingRows = [
-      {
-        chatId: "chat-1",
-        id: "assistant-1",
-        role: "assistant",
-        parts: {
-          id: "assistant-1",
-          role: "assistant",
-          parts: [{ type: "tool-ask_user_question" }],
-        },
-        createdAt: new Date("2026-01-01T00:00:10.000Z"),
-      },
-    ];
-
-    expect(
-      await getLongestRepoAssistantTurnDurationMs({
-        userId: "user-1",
-        repoOwner: "vercel",
-        repoName: "open-harness",
-      }),
-    ).toBeNull();
   });
 });
 

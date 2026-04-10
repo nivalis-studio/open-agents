@@ -62,6 +62,62 @@ describe("buildUsageInsights", () => {
           updatedAt: new Date("2026-01-13T00:00:00.000Z"),
         },
       ],
+      assistantTurns: [
+        {
+          chatId: "chat-1",
+          role: "user",
+          parts: { id: "user-1", role: "user", parts: [] },
+          createdAt: new Date("2026-01-01T00:00:00.000Z"),
+        },
+        {
+          chatId: "chat-1",
+          role: "assistant",
+          parts: {
+            id: "assistant-1",
+            role: "assistant",
+            parts: [{ type: "text", text: "Quick reply" }],
+          },
+          createdAt: new Date("2026-01-01T00:00:05.000Z"),
+        },
+        {
+          chatId: "chat-2",
+          role: "user",
+          parts: { id: "user-2", role: "user", parts: [] },
+          createdAt: new Date("2026-01-02T00:00:00.000Z"),
+        },
+        {
+          chatId: "chat-2",
+          role: "assistant",
+          parts: {
+            id: "assistant-2",
+            role: "assistant",
+            parts: [
+              { type: "text", text: "Need input" },
+              {
+                type: "tool-ask_user_question",
+                toolName: "ask_user_question",
+              },
+            ],
+          },
+          createdAt: new Date("2026-01-02T00:00:30.000Z"),
+        },
+        {
+          chatId: "chat-3",
+          role: "user",
+          parts: { id: "user-3", role: "user", parts: [] },
+          createdAt: new Date("2026-01-03T00:00:00.000Z"),
+        },
+        {
+          chatId: "chat-3",
+          role: "assistant",
+          parts: {
+            id: "assistant-3",
+            role: "assistant",
+            parts: [{ type: "text", text: "Long reply" }],
+          },
+          createdAt: new Date("2026-01-03T00:00:20.000Z"),
+        },
+      ],
       topRepositoryLimit: 5,
     });
 
@@ -78,6 +134,7 @@ describe("buildUsageInsights", () => {
       mainAssistantTurnCount: 10,
       averageTokensPerMainTurn: 60,
       largestMainTurnTokens: 120,
+      longestAssistantTurnMs: 20_000,
       toolCallsPerMainTurn: 3,
       cacheReadRatio: 0.25,
     });
@@ -124,6 +181,7 @@ describe("buildUsageInsights", () => {
         largestMainTurnTokens: 0,
       },
       sessions: [],
+      assistantTurns: [],
     });
 
     expect(insights.pr).toEqual({
@@ -139,6 +197,7 @@ describe("buildUsageInsights", () => {
       mainAssistantTurnCount: 0,
       averageTokensPerMainTurn: 0,
       largestMainTurnTokens: 0,
+      longestAssistantTurnMs: null,
       toolCallsPerMainTurn: 0,
       cacheReadRatio: 0,
     });

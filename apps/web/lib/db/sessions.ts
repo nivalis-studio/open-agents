@@ -1,5 +1,5 @@
 import type { SandboxState } from "@open-harness/sandbox";
-import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { db } from "./client";
 import {
   chatMessages,
@@ -58,23 +58,6 @@ function normalizeSessionRecord<T extends { sandboxState: unknown }>(
     ...session,
     sandboxState: normalizeLegacySandboxState(session.sandboxState) ?? null,
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function assistantMessageHasAskUserQuestion(parts: unknown): boolean {
-  if (!isRecord(parts) || !Array.isArray(parts.parts)) {
-    return false;
-  }
-
-  return parts.parts.some(
-    (part) =>
-      isRecord(part) &&
-      (part.type === "tool-ask_user_question" ||
-        part.toolName === "ask_user_question"),
-  );
 }
 
 export async function createSession(data: NewSession) {
@@ -560,72 +543,6 @@ export async function getChatMessages(chatId: string) {
     where: eq(chatMessages.chatId, chatId),
     orderBy: [chatMessages.createdAt, chatMessages.id],
   });
-}
-
-interface GetLongestRepoAssistantTurnDurationParams {
-  userId: string;
-  repoOwner: string;
-  repoName: string;
-}
-
-export async function getLongestRepoAssistantTurnDurationMs(
-  params: GetLongestRepoAssistantTurnDurationParams,
-): Promise<number | null> {
-  const rows = await db
-    .select({
-      chatId: chatMessages.chatId,
-      id: chatMessages.id,
-      role: chatMessages.role,
-      parts: chatMessages.parts,
-      createdAt: chatMessages.createdAt,
-    })
-    .from(chatMessages)
-    .innerJoin(chats, eq(chats.id, chatMessages.chatId))
-    .innerJoin(sessions, eq(sessions.id, chats.sessionId))
-    .where(
-      and(
-        eq(sessions.userId, params.userId),
-        eq(sessions.repoOwner, params.repoOwner),
-        eq(sessions.repoName, params.repoName),
-      ),
-    )
-    .orderBy(
-      asc(chatMessages.chatId),
-      asc(chatMessages.createdAt),
-      asc(chatMessages.id),
-    );
-
-  const previousMessageByChatId = new Map<
-    string,
-    { role: "user" | "assistant"; createdAt: Date }
-  >();
-  let longestDurationMs: number | null = null;
-
-  for (const row of rows) {
-    const previousMessage = previousMessageByChatId.get(row.chatId);
-
-    if (
-      row.role === "assistant" &&
-      previousMessage?.role === "user" &&
-      !assistantMessageHasAskUserQuestion(row.parts)
-    ) {
-      const durationMs =
-        row.createdAt.getTime() - previousMessage.createdAt.getTime();
-      if (durationMs >= 0) {
-        longestDurationMs =
-          longestDurationMs === null
-            ? durationMs
-            : Math.max(longestDurationMs, durationMs);
-      }
-    }
-
-    previousMessageByChatId.set(row.chatId, {
-      role: row.role,
-      createdAt: row.createdAt,
-    });
-  }
-
-  return longestDurationMs;
 }
 
 type DeleteChatMessageAndFollowingResult =

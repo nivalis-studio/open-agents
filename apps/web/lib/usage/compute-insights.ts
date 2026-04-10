@@ -21,10 +21,18 @@ export interface UsageSessionInsightRow {
   updatedAt: Date;
 }
 
+export interface UsageAssistantTurnRow {
+  chatId: string;
+  role: "user" | "assistant";
+  parts: unknown;
+  createdAt: Date;
+}
+
 interface BuildUsageInsightsParams {
   lookbackDays: number;
   aggregate: UsageAggregateRow;
   sessions: UsageSessionInsightRow[];
+  assistantTurns: UsageAssistantTurnRow[];
   topRepositoryLimit?: number;
 }
 
@@ -58,6 +66,60 @@ const clampRatio = (numerator: number, denominator: number): number => {
   const ratio = numerator / denominator;
   return Math.max(0, Math.min(1, ratio));
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function assistantTurnHasAskUserQuestion(parts: unknown): boolean {
+  if (!isRecord(parts) || !Array.isArray(parts.parts)) {
+    return false;
+  }
+
+  return parts.parts.some(
+    (part) =>
+      isRecord(part) &&
+      (part.type === "tool-ask_user_question" ||
+        part.toolName === "ask_user_question"),
+  );
+}
+
+function getLongestAssistantTurnMs(
+  assistantTurns: UsageAssistantTurnRow[],
+): number | null {
+  const previousMessageByChatId = new Map<
+    string,
+    { role: "user" | "assistant"; createdAt: Date }
+  >();
+  let longestDurationMs: number | null = null;
+
+  for (const turn of assistantTurns) {
+    const previousMessage = previousMessageByChatId.get(turn.chatId);
+
+    if (
+      turn.role === "assistant" &&
+      previousMessage?.role === "user" &&
+      !assistantTurnHasAskUserQuestion(turn.parts)
+    ) {
+      const durationMs =
+        turn.createdAt.getTime() - previousMessage.createdAt.getTime();
+
+      if (durationMs >= 0) {
+        longestDurationMs =
+          longestDurationMs === null
+            ? durationMs
+            : Math.max(longestDurationMs, durationMs);
+      }
+    }
+
+    previousMessageByChatId.set(turn.chatId, {
+      role: turn.role,
+      createdAt: turn.createdAt,
+    });
+  }
+
+  return longestDurationMs;
+}
 
 function buildTopRepositories(
   sessions: UsageSessionInsightRow[],
@@ -227,6 +289,7 @@ export function buildUsageInsights(
       largestMainTurnTokens: toNonNegativeNumber(
         params.aggregate.largestMainTurnTokens,
       ),
+      longestAssistantTurnMs: getLongestAssistantTurnMs(params.assistantTurns),
       toolCallsPerMainTurn:
         mainAssistantTurnCount > 0
           ? totalToolCallCount / mainAssistantTurnCount

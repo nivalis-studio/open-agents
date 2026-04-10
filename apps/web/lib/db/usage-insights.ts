@@ -1,7 +1,8 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import {
   buildUsageInsights,
   type UsageAggregateRow,
+  type UsageAssistantTurnRow,
   type UsageSessionInsightRow,
 } from "@/lib/usage/compute-insights";
 import {
@@ -10,7 +11,7 @@ import {
 } from "@/lib/usage/date-range";
 import type { UsageInsights } from "@/lib/usage/types";
 import { db } from "./client";
-import { sessions, usageEvents } from "./schema";
+import { chatMessages, chats, sessions, usageEvents } from "./schema";
 
 const EMPTY_USAGE_AGGREGATE: UsageAggregateRow = {
   totalInputTokens: 0,
@@ -74,6 +75,32 @@ function buildSessionsWhereClause(
   );
 }
 
+function buildAssistantTurnsWhereClause(
+  userId: string,
+  options?: UsageInsightsOptions,
+) {
+  if (options?.range) {
+    return and(
+      eq(sessions.userId, userId),
+      sql`date(${chatMessages.createdAt}) >= ${options.range.from}`,
+      sql`date(${chatMessages.createdAt}) <= ${options.range.to}`,
+    );
+  }
+
+  if (options?.allTime) {
+    return eq(sessions.userId, userId);
+  }
+
+  const days = options?.days ?? 280;
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  return and(
+    eq(sessions.userId, userId),
+    sql`${chatMessages.createdAt} >= ${since.toISOString()}`,
+  );
+}
+
 function getLookbackDays(options?: UsageInsightsOptions): number {
   if (options?.range) {
     return getDateRangeDaysInclusive(options.range);
@@ -90,7 +117,7 @@ export async function getUsageInsights(
   userId: string,
   options?: UsageInsightsOptions,
 ): Promise<UsageInsights> {
-  const [aggregateRows, sessionRows] = await Promise.all([
+  const [aggregateRows, sessionRows, assistantTurnRows] = await Promise.all([
     db
       .select({
         totalInputTokens: sql<number>`coalesce(sum(${usageEvents.inputTokens}), 0)::double precision`,
@@ -116,6 +143,22 @@ export async function getUsageInsights(
       })
       .from(sessions)
       .where(buildSessionsWhereClause(userId, options)),
+    db
+      .select({
+        chatId: chatMessages.chatId,
+        role: chatMessages.role,
+        parts: chatMessages.parts,
+        createdAt: chatMessages.createdAt,
+      })
+      .from(chatMessages)
+      .innerJoin(chats, eq(chats.id, chatMessages.chatId))
+      .innerJoin(sessions, eq(sessions.id, chats.sessionId))
+      .where(buildAssistantTurnsWhereClause(userId, options))
+      .orderBy(
+        asc(chatMessages.chatId),
+        asc(chatMessages.createdAt),
+        asc(chatMessages.id),
+      ),
   ]);
 
   const aggregate = aggregateRows[0] ?? EMPTY_USAGE_AGGREGATE;
@@ -124,5 +167,6 @@ export async function getUsageInsights(
     lookbackDays: getLookbackDays(options),
     aggregate,
     sessions: sessionRows as UsageSessionInsightRow[],
+    assistantTurns: assistantTurnRows as UsageAssistantTurnRow[],
   });
 }

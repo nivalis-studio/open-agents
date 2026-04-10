@@ -3,6 +3,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { formatElapsed } from "@/app/shared/[shareId]/shared-chat-status-utils";
 import { getPublicUsageProfile } from "@/lib/db/public-usage-profile";
 
 interface PublicUsagePageProps {
@@ -40,6 +41,10 @@ function formatCompactNumber(value: number): string {
 
 function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
+}
+
+function formatOptionalElapsed(value: number | null): string {
+  return value === null ? "—" : formatElapsed(value);
 }
 
 async function getBaseUrl(): Promise<string> {
@@ -227,6 +232,14 @@ export default async function PublicUsagePage({
                 {profile.totals.toolCallCount.toLocaleString()}
               </span>{" "}
               tool calls
+            </span>
+            <span>
+              <span className="font-mono text-white/50 tabular-nums">
+                {formatOptionalElapsed(
+                  profile.insights.efficiency.longestAssistantTurnMs,
+                )}
+              </span>{" "}
+              longest turn
             </span>
           </div>
         </section>
