@@ -1,6 +1,12 @@
 import { discoverSkills } from "@open-harness/agent";
 import { connectSandbox } from "@open-harness/sandbox";
 import { getUserGitHubToken } from "@/lib/github/user-token";
+import { getEnabledMCPConnections } from "@/lib/db/mcp-connections";
+import {
+  resolveMCPTools,
+  closeMCPClients,
+  type ResolvedMCPTools,
+} from "@/lib/mcp/client";
 import { DEFAULT_SANDBOX_PORTS } from "@/lib/sandbox/config";
 import {
   getVercelCliSandboxSetup,
@@ -34,6 +40,15 @@ async function loadSessionSkills(
   return discoveredSkills;
 }
 
+export { closeMCPClients };
+export type { ResolvedMCPTools };
+
+const EMPTY_MCP_RESULT: ResolvedMCPTools = {
+  tools: {},
+  clients: [],
+  connectionDescriptions: [],
+};
+
 export async function createChatRuntime(params: {
   userId: string;
   sessionId: string;
@@ -41,6 +56,7 @@ export async function createChatRuntime(params: {
 }): Promise<{
   sandbox: ConnectedSandbox;
   skills: DiscoveredSkills;
+  mcpResult: ResolvedMCPTools;
 }> {
   const { userId, sessionId, sessionRecord } = params;
 
@@ -78,8 +94,29 @@ export async function createChatRuntime(params: {
 
   const skills = await loadSessionSkills(sessionId, sandboxState, sandbox);
 
+  // Resolve MCP connections for this session
+  const enabledMcpIds =
+    (sessionRecord as SessionRecord & { enabledMcpConnectionIds?: string[] })
+      .enabledMcpConnectionIds ?? [];
+
+  let mcpResult: ResolvedMCPTools = EMPTY_MCP_RESULT;
+  if (enabledMcpIds.length > 0) {
+    try {
+      const connections = await getEnabledMCPConnections(userId, enabledMcpIds);
+      if (connections.length > 0) {
+        mcpResult = await resolveMCPTools(connections);
+      }
+    } catch (error) {
+      console.error(
+        `Failed to resolve MCP tools for session ${sessionId}:`,
+        error,
+      );
+    }
+  }
+
   return {
     sandbox,
     skills,
+    mcpResult,
   };
 }
