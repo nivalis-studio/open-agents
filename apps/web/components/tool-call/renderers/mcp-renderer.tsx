@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Globe } from "lucide-react";
+import { ExternalLink, Globe } from "lucide-react";
 import type { ToolRendererProps } from "@/app/lib/render-tool";
 import { McpProviderIcon } from "@/components/mcp-icons";
 import { ToolLayout } from "../tool-layout";
@@ -303,6 +303,14 @@ function SourceTypeIcon({
   }
 }
 
+/**
+ * Clean up a timestamp like "Past day (2026-04-10)" → "Past day",
+ * or "2 months ago (2026-02-06)" → "2 months ago".
+ */
+function cleanTimestamp(ts: string): string {
+  return ts.replace(/\s*\([\d-]+\)\s*$/, "").trim();
+}
+
 // ---------------------------------------------------------------------------
 // Search result item
 // ---------------------------------------------------------------------------
@@ -313,26 +321,20 @@ function SearchResultItem({ result }: { result: SearchResult }) {
       href={result.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="flex items-start gap-2.5 rounded-md px-2 py-1.5 hover:bg-muted/50 transition-colors"
+      className="group/result flex items-center gap-2 rounded px-1.5 py-1 hover:bg-muted/50 transition-colors"
     >
-      <SourceTypeIcon type={result.type} className="size-4 mt-0.5 shrink-0" />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-xs font-medium text-foreground truncate">
-            {result.title}
+      <SourceTypeIcon type={result.type} className="size-3 shrink-0" />
+      <span className="text-[11px] font-medium text-foreground/90 truncate">
+        {result.title}
+      </span>
+      <span className="shrink-0 ml-auto flex items-center gap-1.5">
+        {result.timestamp && (
+          <span className="text-[10px] text-muted-foreground/50">
+            {cleanTimestamp(result.timestamp)}
           </span>
-          {result.timestamp && (
-            <span className="text-[10px] text-muted-foreground/60 shrink-0">
-              {result.timestamp}
-            </span>
-          )}
-        </div>
-        {result.highlight && (
-          <p className="text-[11px] text-muted-foreground line-clamp-2 mt-0.5">
-            {result.highlight.split("\n")[0]}
-          </p>
         )}
-      </div>
+        <ExternalLink className="size-3 text-muted-foreground/0 group-hover/result:text-muted-foreground/50 transition-colors" />
+      </span>
     </a>
   );
 }
@@ -366,7 +368,7 @@ export function McpRenderer({
     const parsed = tryParseSearchResults(rawOutput);
     if (parsed) {
       return (
-        <div className="space-y-0.5">
+        <div className="ml-4 space-y-0">
           {parsed.results.map((result, i) => (
             <SearchResultItem key={result.id ?? i} result={result} />
           ))}
