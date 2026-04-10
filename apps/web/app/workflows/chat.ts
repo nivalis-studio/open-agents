@@ -54,6 +54,8 @@ type Options = {
   repoOwner?: string;
   /** GitHub repo name (required for auto-commit). */
   repoName?: string;
+  /** MCP connection IDs to resolve tools from inside the workflow step. */
+  enabledMcpConnectionIds?: string[];
 };
 
 type Writable = WritableStream<UIMessageChunk>;
@@ -491,7 +493,19 @@ export async function runAgentWorkflow(options: Options) {
       options.maxSteps === undefined || step < options.maxSteps;
       step++
     ) {
-      let result: Awaited<ReturnType<typeof runAgentStep>>;
+      const result = await runAgentStep(
+        modelMessages,
+        originalMessagesForStep,
+        assistantId,
+        writable,
+        workflowRunId,
+        options.chatId,
+        options.sessionId,
+        options.modelId,
+        options.agentOptions,
+        options.userId,
+        options.enabledMcpConnectionIds,
+      );
 
       try {
         result = await runAgentStep(
@@ -761,12 +775,43 @@ const runAgentStep = async (
   sessionId: string,
   selectedModelId: string,
   agentOptions: OpenHarnessAgentCallOptions,
-  stepNumber: number,
+  userId: string,
+  enabledMcpConnectionIds?: string[],
 ) => {
   "use step";
 
   const stepStartedAt = new Date();
   const { webAgent } = await import("@/app/config");
+
+  // Resolve MCP tools inside the workflow step (ToolSet objects contain Zod
+  // schemas with Symbols that can't be serialized across the workflow boundary).
+  let resolvedOptions = agentOptions;
+  if (enabledMcpConnectionIds && enabledMcpConnectionIds.length > 0) {
+    try {
+      const { getEnabledMCPConnections } =
+        await import("@/lib/db/mcp-connections");
+      const { resolveMCPTools } = await import("@/lib/mcp/client");
+      const connections = await getEnabledMCPConnections(
+        userId,
+        enabledMcpConnectionIds,
+      );
+      if (connections.length > 0) {
+        const mcpResult = await resolveMCPTools(connections);
+        if (Object.keys(mcpResult.tools).length > 0) {
+          resolvedOptions = {
+            ...agentOptions,
+            mcpTools: mcpResult.tools,
+            mcpConnectionDescriptions: mcpResult.connectionDescriptions,
+          };
+        }
+      }
+    } catch (error) {
+      console.error(
+        `Failed to resolve MCP tools in workflow step for session ${sessionId}:`,
+        error,
+      );
+    }
+  }
 
   const abortController = new AbortController();
   const stopMonitor = startStopMonitor(workflowRunId, abortController);
@@ -788,7 +833,7 @@ const runAgentStep = async (
 
     const result = await webAgent.stream({
       messages,
-      options: agentOptions,
+      options: resolvedOptions,
       abortSignal: abortController.signal,
     });
 
