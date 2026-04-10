@@ -55,36 +55,42 @@ async function discardPathChanges(params: {
 }): Promise<{ ok: true } | { ok: false; error: string }> {
   const { cwd, path, hasHead, sandbox } = params;
   const quotedPath = shellQuote(path);
+  const trackedResult = await sandbox.exec(
+    `git ls-files --error-unmatch -- ${quotedPath}`,
+    cwd,
+    10000,
+  );
 
-  if (hasHead) {
-    const restoreResult = await sandbox.exec(
-      `git restore --source=HEAD --staged --worktree -- ${quotedPath}`,
-      cwd,
-      30000,
-    );
-    const restoreError = toGitErrorMessage(restoreResult);
-    if (!restoreResult.success && !isPathspecError(restoreError)) {
-      return { ok: false, error: restoreError };
-    }
-  } else {
-    const clearIndexResult = await sandbox.exec(
-      `git rm -rf --cached -- ${quotedPath}`,
-      cwd,
-      30000,
-    );
-    const clearIndexError = toGitErrorMessage(clearIndexResult);
-    if (!clearIndexResult.success && !isPathspecError(clearIndexError)) {
-      return { ok: false, error: clearIndexError };
+  if (trackedResult.success) {
+    if (hasHead) {
+      const restoreResult = await sandbox.exec(
+        `git restore --source=HEAD --staged --worktree -- ${quotedPath}`,
+        cwd,
+        30000,
+      );
+      if (!restoreResult.success) {
+        return { ok: false, error: toGitErrorMessage(restoreResult) };
+      }
+    } else {
+      const clearIndexResult = await sandbox.exec(
+        `git rm -rf --cached -- ${quotedPath}`,
+        cwd,
+        30000,
+      );
+      const clearIndexError = toGitErrorMessage(clearIndexResult);
+      if (!clearIndexResult.success && !isPathspecError(clearIndexError)) {
+        return { ok: false, error: clearIndexError };
+      }
     }
   }
 
-  const cleanResult = await sandbox.exec(
-    `git clean -fd -- ${quotedPath}`,
+  const removeResult = await sandbox.exec(
+    `rm -rf -- ${quotedPath}`,
     cwd,
     30000,
   );
-  if (!cleanResult.success) {
-    return { ok: false, error: toGitErrorMessage(cleanResult) };
+  if (!removeResult.success) {
+    return { ok: false, error: toGitErrorMessage(removeResult) };
   }
 
   return { ok: true };
