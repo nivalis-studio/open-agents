@@ -57,6 +57,7 @@ export async function POST(req: NextRequest) {
     if (!catalogEntry) {
       return NextResponse.json({ error: "Unknown provider" }, { status: 400 });
     }
+
     mcpUrl = catalogEntry.url;
     provider = catalogEntry.provider;
     connectionName = catalogEntry.name;

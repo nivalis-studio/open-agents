@@ -69,12 +69,6 @@ interface MCPProvider {
 
 const PREDEFINED_PROVIDERS: MCPProvider[] = [
   {
-    id: "vercel",
-    name: "Vercel",
-    description: "Deploy previews, logs, and project management",
-    icon: <VercelIcon className="h-5 w-5" />,
-  },
-  {
     id: "notion",
     name: "Notion",
     description: "Pages, databases, and workspace search",
@@ -89,19 +83,6 @@ const PREDEFINED_PROVIDERS: MCPProvider[] = [
 ];
 
 // ── Icons ──────────────────────────────────────────────────────────────────
-
-function VercelIcon({ className }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path d="M12 2L2 19.5h20L12 2z" />
-    </svg>
-  );
-}
 
 function NotionIcon({ className }: { className?: string }) {
   return (

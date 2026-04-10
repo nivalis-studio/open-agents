@@ -12,15 +12,6 @@ export interface MCPCatalogEntry {
 
 export const MCP_CATALOG: MCPCatalogEntry[] = [
   {
-    provider: "vercel",
-    name: "Vercel",
-    description: "Deploy, manage projects, and access deployment logs",
-    url: "https://mcp.vercel.com",
-    transportType: "http",
-    icon: "vercel",
-    authType: "oauth",
-  },
-  {
     provider: "notion",
     name: "Notion",
     description: "Search pages, read content, create and update documents",
