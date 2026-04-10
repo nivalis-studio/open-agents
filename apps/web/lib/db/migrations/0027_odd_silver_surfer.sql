@@ -33,10 +33,7 @@ CREATE TABLE "mcp_oauth_states" (
 	"created_at" timestamp DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
-ALTER TABLE "sessions" ADD COLUMN "enabled_mcp_connection_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;
---> statement-breakpoint
+ALTER TABLE "sessions" ADD COLUMN "enabled_mcp_connection_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;--> statement-breakpoint
+ALTER TABLE "mcp_connections" ADD CONSTRAINT "mcp_connections_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "mcp_oauth_states" ADD CONSTRAINT "mcp_oauth_states_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "mcp_connections_user_id_idx" ON "mcp_connections" USING btree ("user_id");
---> statement-breakpoint
-ALTER TABLE "mcp_connections" ADD CONSTRAINT "mcp_connections_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
---> statement-breakpoint
-ALTER TABLE "mcp_oauth_states" ADD CONSTRAINT "mcp_oauth_states_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;
