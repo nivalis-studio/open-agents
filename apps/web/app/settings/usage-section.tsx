@@ -1,5 +1,6 @@
 "use client";
 
+import { formatTokens } from "@open-harness/shared";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import type { DateRange } from "react-day-picker";
@@ -13,6 +14,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { estimateModelUsageCost, type AvailableModel } from "@/lib/models";
 import { fetcher } from "@/lib/swr";
 import { formatDateOnly } from "@/lib/usage/date-range";
 import type { UsageDomainLeaderboard, UsageInsights } from "@/lib/usage/types";
@@ -63,11 +65,14 @@ interface UsageResponse {
   domainLeaderboard: UsageDomainLeaderboard | null;
 }
 
-function formatTokens(n: number) {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+interface ModelsResponse {
+  models: AvailableModel[];
+}
+
+interface CostEstimateSummary {
+  amount: number;
+  pricedTokens: number;
+  totalTokens: number;
 }
 
 function formatDateRangeLabel(range: DateRange | undefined) {
@@ -186,6 +191,96 @@ function displayModelId(modelId: string): string {
   return slashIndex >= 0 ? modelId.slice(slashIndex + 1) : modelId;
 }
 
+function formatUsd(amount: number): string {
+  if (amount >= 100) {
+    return "$" + amount.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+  if (amount >= 1) {
+    return (
+      "$" +
+      amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    );
+  }
+  if (amount >= 0.01) {
+    return (
+      "$" +
+      amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    );
+  }
+  return (
+    "$" +
+    amount.toLocaleString("en-US", {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4,
+    })
+  );
+}
+
+function estimateUsageCost(
+  modelUsage: ModelUsage[],
+  models: AvailableModel[],
+): CostEstimateSummary | undefined {
+  let amount = 0;
+  let pricedTokens = 0;
+  let totalTokens = 0;
+  const modelsById = new Map(models.map((model) => [model.id, model]));
+
+  for (const usage of modelUsage) {
+    const modelTotalTokens = usage.inputTokens + usage.outputTokens;
+    totalTokens += modelTotalTokens;
+
+    const cost = estimateModelUsageCost(
+      usage,
+      modelsById.get(usage.modelId)?.cost,
+    );
+    if (cost === undefined) {
+      continue;
+    }
+
+    amount += cost;
+    pricedTokens += modelTotalTokens;
+  }
+
+  if (totalTokens <= 0) {
+    return undefined;
+  }
+
+  return {
+    amount,
+    pricedTokens,
+    totalTokens,
+  };
+}
+
+function getCostEstimateDetail(
+  costEstimate: CostEstimateSummary | undefined,
+  isPricingLoading: boolean,
+): string {
+  if (isPricingLoading) {
+    return "Loading model pricing";
+  }
+
+  if (!costEstimate) {
+    return "No model usage";
+  }
+
+  if (costEstimate.pricedTokens <= 0) {
+    return "No pricing available for used models";
+  }
+
+  if (costEstimate.pricedTokens >= costEstimate.totalTokens) {
+    return "Estimated from models.dev pricing";
+  }
+
+  return `Estimated from ${Math.round((costEstimate.pricedTokens / costEstimate.totalTokens) * 100)}% of tokens with known pricing`;
+}
+
 function mergeDays(rows: DailyUsageRow[]): MergedDay[] {
   const map = new Map<string, MergedDay>();
   for (const r of rows) {
@@ -213,8 +308,8 @@ export function UsageSectionSkeleton() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid gap-3 min-[420px]:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
+        <div className="grid gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
             <div key={i}>
               <div className="text-xs">
                 <Skeleton className="h-3 w-20" />
@@ -458,27 +553,39 @@ export function UsageSection() {
     isLoading: isFilteredDataLoading,
     error: filteredDataError,
   } = useSWR<UsageResponse>(filteredUsagePath, fetcher);
+  const { data: modelsData, isLoading: isModelsLoading } =
+    useSWR<ModelsResponse>("/api/models", fetcher);
 
   const data = filteredUsagePath ? filteredData : fullData;
   const isLoading =
     isFullDataLoading || (filteredUsagePath !== null && isFilteredDataLoading);
   const error = fullDataError ?? filteredDataError;
 
-  const { totals, chartData, modelUsage, mainTotals, subagentTotals } =
-    useMemo(() => {
-      const selectedUsage = data?.usage ?? [];
-      const chartUsage = fullData?.usage ?? selectedUsage;
-
-      const main = selectedUsage.filter((r) => r.agentType === "main");
-      const subagent = selectedUsage.filter((r) => r.agentType === "subagent");
-      return {
-        totals: sumRows(selectedUsage),
-        chartData: mergeDays(chartUsage),
-        modelUsage: aggregateByModel(selectedUsage),
-        mainTotals: sumRows(main),
-        subagentTotals: sumRows(subagent),
-      };
-    }, [data, fullData]);
+  const {
+    totals,
+    chartData,
+    modelUsage,
+    mainTotals,
+    subagentTotals,
+    costEstimate,
+  } = useMemo(() => {
+    const selectedUsage = data?.usage ?? [];
+    const chartUsage = fullData?.usage ?? selectedUsage;
+    const aggregatedModelUsage = aggregateByModel(selectedUsage);
+    const main = selectedUsage.filter((r) => r.agentType === "main");
+    const subagent = selectedUsage.filter((r) => r.agentType === "subagent");
+    return {
+      totals: sumRows(selectedUsage),
+      chartData: mergeDays(chartUsage),
+      modelUsage: aggregatedModelUsage,
+      mainTotals: sumRows(main),
+      subagentTotals: sumRows(subagent),
+      costEstimate: estimateUsageCost(
+        aggregatedModelUsage,
+        modelsData?.models ?? [],
+      ),
+    };
+  }, [data, fullData, modelsData]);
 
   if (isLoading) return <UsageSectionSkeleton />;
 
@@ -502,7 +609,14 @@ export function UsageSection() {
   const subagentTokens =
     subagentTotals.inputTokens + subagentTotals.outputTokens;
 
-  const hasUsage = totals.messageCount > 0;
+  const hasUsage = totalTokens > 0 || totals.messageCount > 0;
+  const costEstimateValue =
+    costEstimate && costEstimate.pricedTokens > 0
+      ? formatUsd(costEstimate.amount)
+      : "—";
+  const costEstimateDetail = hasUsage
+    ? getCostEstimateDetail(costEstimate, isModelsLoading)
+    : "No usage yet";
   const agentSegments: PieSegment[] = [
     {
       label: "Main agent",
@@ -573,8 +687,13 @@ export function UsageSection() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="grid gap-3 min-[420px]:grid-cols-3">
+          <div className="grid gap-3 min-[420px]:grid-cols-2 xl:grid-cols-4">
             <StatBlock label="Total tokens" value={formatTokens(totalTokens)} />
+            <StatBlock
+              label="Estimated cost"
+              value={costEstimateValue}
+              detail={costEstimateDetail}
+            />
             <StatBlock
               label="Messages"
               value={totals.messageCount.toLocaleString()}

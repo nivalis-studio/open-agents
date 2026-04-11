@@ -1,5 +1,6 @@
 "use client";
 
+import { formatTokens } from "@open-harness/shared";
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import useSWR from "swr";
@@ -8,6 +9,7 @@ import { ContributionChart } from "@/components/contribution-chart";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/hooks/use-session";
+import { estimateModelUsageCost, type AvailableModel } from "@/lib/models";
 import { fetcher } from "@/lib/swr";
 import { formatDateOnly } from "@/lib/usage/date-range";
 import type { UsageInsights, UsageRepositoryInsight } from "@/lib/usage/types";
@@ -52,14 +54,17 @@ interface UsageResponse {
   domainLeaderboard: unknown;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-
-function formatTokens(n: number) {
-  if (n >= 1_000_000_000) return `${(n / 1_000_000_000).toFixed(1)}B`;
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
+interface ModelsResponse {
+  models: AvailableModel[];
 }
+
+interface CostEstimateSummary {
+  amount: number;
+  pricedTokens: number;
+  totalTokens: number;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
 
 function sumRows(rows: DailyUsageRow[]) {
   return rows.reduce(
@@ -135,6 +140,73 @@ function displayModelId(modelId: string): string {
   return slashIndex >= 0 ? modelId.slice(slashIndex + 1) : modelId;
 }
 
+function formatUsd(amount: number): string {
+  if (amount >= 100) {
+    return "$" + amount.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+  if (amount >= 1) {
+    return (
+      "$" +
+      amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    );
+  }
+  if (amount >= 0.01) {
+    return (
+      "$" +
+      amount.toLocaleString("en-US", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })
+    );
+  }
+  return (
+    "$" +
+    amount.toLocaleString("en-US", {
+      minimumFractionDigits: 4,
+      maximumFractionDigits: 4,
+    })
+  );
+}
+
+function estimateUsageCost(
+  modelUsage: ModelUsage[],
+  models: AvailableModel[],
+): CostEstimateSummary | undefined {
+  let amount = 0;
+  let pricedTokens = 0;
+  let totalTokens = 0;
+  const modelsById = new Map(models.map((model) => [model.id, model]));
+
+  for (const usage of modelUsage) {
+    const modelTotalTokens = usage.inputTokens + usage.outputTokens;
+    totalTokens += modelTotalTokens;
+
+    const cost = estimateModelUsageCost(
+      usage,
+      modelsById.get(usage.modelId)?.cost,
+    );
+    if (cost === undefined) {
+      continue;
+    }
+
+    amount += cost;
+    pricedTokens += modelTotalTokens;
+  }
+
+  if (totalTokens <= 0) {
+    return undefined;
+  }
+
+  return {
+    amount,
+    pricedTokens,
+    totalTokens,
+  };
+}
+
 // Gray-scale dot classes: brightest first (top rank), darkest last
 const RANK_DOT_CLASSES = [
   "bg-neutral-100 dark:bg-neutral-200",
@@ -146,13 +218,28 @@ const RANK_DOT_CLASSES = [
 
 // ── Sub-components ─────────────────────────────────────────────────────────
 
-function StatItem({ label, value }: { label: string; value: string }) {
+function StatItem({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail?: string;
+}) {
   return (
-    <div className="flex items-center justify-between py-2">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span className="text-sm font-semibold font-mono tabular-nums">
-        {value}
-      </span>
+    <div className="py-2">
+      <div className="flex items-center justify-between gap-4">
+        <span className="text-sm text-muted-foreground">{label}</span>
+        <span className="text-sm font-semibold font-mono tabular-nums">
+          {value}
+        </span>
+      </div>
+      {detail ? (
+        <div className="mt-1 text-right text-[11px] text-muted-foreground">
+          {detail}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -236,6 +323,7 @@ function TopRepos({ repos }: { repos: UsageRepositoryInsight[] }) {
 function ProfileSidebar({
   totals,
   topRepos,
+  estimatedCostValue,
 }: {
   totals: {
     inputTokens: number;
@@ -244,6 +332,7 @@ function ProfileSidebar({
     toolCallCount: number;
   } | null;
   topRepos: UsageRepositoryInsight[] | null;
+  estimatedCostValue: string;
 }) {
   const { session, loading } = useSession();
 
@@ -311,6 +400,7 @@ function ProfileSidebar({
           </h3>
           <div className="rounded-lg border border-border/50 bg-muted/10 px-4 py-1 divide-y divide-border/50">
             <StatItem label="Total tokens" value={formatTokens(totalTokens)} />
+            <StatItem label="Estimated cost" value={estimatedCostValue} />
             <StatItem
               label="Messages"
               value={totals.messageCount.toLocaleString()}
@@ -352,31 +442,47 @@ export default function ProfilePage() {
     isLoading: isFilteredDataLoading,
     error: filteredDataError,
   } = useSWR<UsageResponse>(filteredUsagePath, fetcher);
+  const { data: modelsData } = useSWR<ModelsResponse>("/api/models", fetcher);
 
   const data = filteredUsagePath ? filteredData : fullData;
   const isLoading =
     isFullDataLoading || (filteredUsagePath !== null && isFilteredDataLoading);
   const error = fullDataError ?? filteredDataError;
 
-  const { totals, chartData, modelUsage, mainTotals, subagentTotals } =
-    useMemo(() => {
-      const selectedUsage = data?.usage ?? [];
-      const chartUsage = fullData?.usage ?? selectedUsage;
-      const main = selectedUsage.filter((r) => r.agentType === "main");
-      const subagent = selectedUsage.filter((r) => r.agentType === "subagent");
-      return {
-        totals: sumRows(selectedUsage),
-        chartData: mergeDays(chartUsage),
-        modelUsage: aggregateByModel(selectedUsage),
-        mainTotals: sumRows(main),
-        subagentTotals: sumRows(subagent),
-      };
-    }, [data, fullData]);
+  const {
+    totals,
+    chartData,
+    modelUsage,
+    mainTotals,
+    subagentTotals,
+    costEstimate,
+  } = useMemo(() => {
+    const selectedUsage = data?.usage ?? [];
+    const chartUsage = fullData?.usage ?? selectedUsage;
+    const aggregatedModelUsage = aggregateByModel(selectedUsage);
+    const main = selectedUsage.filter((r) => r.agentType === "main");
+    const subagent = selectedUsage.filter((r) => r.agentType === "subagent");
+    return {
+      totals: sumRows(selectedUsage),
+      chartData: mergeDays(chartUsage),
+      modelUsage: aggregatedModelUsage,
+      mainTotals: sumRows(main),
+      subagentTotals: sumRows(subagent),
+      costEstimate: estimateUsageCost(
+        aggregatedModelUsage,
+        modelsData?.models ?? [],
+      ),
+    };
+  }, [data, fullData, modelsData]);
 
   const mainTokens = mainTotals.inputTokens + mainTotals.outputTokens;
   const subagentTokens =
     subagentTotals.inputTokens + subagentTotals.outputTokens;
   const hasUsage = totals.messageCount > 0;
+  const estimatedCostValue =
+    costEstimate && costEstimate.pricedTokens > 0
+      ? formatUsd(costEstimate.amount)
+      : "—";
 
   // Build ranked-list items for agent split
   const agentItems = [
@@ -438,6 +544,7 @@ export default function ProfilePage() {
           <ProfileSidebar
             totals={isLoading ? null : totals}
             topRepos={isLoading ? null : topRepos}
+            estimatedCostValue={estimatedCostValue}
           />
         </div>
 

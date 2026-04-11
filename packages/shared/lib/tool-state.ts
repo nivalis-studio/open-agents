@@ -131,11 +131,16 @@ export function toRelativePath(filePath: string, cwd: string): string {
 
 /**
  * Format token count for display.
- * Shows "1.2k" for numbers >= 1000, otherwise raw number.
+ * Examples: 500 → "500", 1200 → "1.2k", 999950 → "1.0m", 2500000000 → "2.5b"
+ *
+ * Uses 999.95 as the promotion threshold so .toFixed(1) rounding never
+ * produces "1000.0k" or "1000.0m" — those values get bumped to the next unit.
  */
 export function formatTokens(tokens: number): string {
-  if (tokens >= 1000) {
-    return `${(tokens / 1000).toFixed(1)}k`;
-  }
-  return tokens.toString();
+  if (tokens >= 999_950_000_000)
+    return `${(tokens / 1_000_000_000_000).toFixed(1)}t`;
+  if (tokens >= 999_950_000) return `${(tokens / 1_000_000_000).toFixed(1)}b`;
+  if (tokens >= 999_950) return `${(tokens / 1_000_000).toFixed(1)}m`;
+  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
+  return tokens.toLocaleString();
 }

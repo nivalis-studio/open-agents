@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { GitCompare, Pencil, Plus, X } from "lucide-react";
+import { FileText, GitCompare, Pencil, Plus, X } from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -45,6 +45,10 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     setFocusedDiffFile,
     changesTabDismissed,
     setChangesTabDismissed,
+    focusedFilePath,
+    setFocusedFilePath,
+    fileTabDismissed,
+    setFileTabDismissed,
   } = useGitPanel();
 
   const [renamingChatId, setRenamingChatId] = useState<string | null>(null);
@@ -52,6 +56,23 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
   const [deletingChatId, setDeletingChatId] = useState<string | null>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      if (container.scrollWidth <= container.clientWidth) return;
+
+      if (e.deltaY !== 0) {
+        e.preventDefault();
+        container.scrollLeft += e.deltaY;
+      }
+    };
+
+    container.addEventListener("wheel", handleWheel, { passive: false });
+    return () => container.removeEventListener("wheel", handleWheel);
+  }, []);
   const prefetchedChatHrefsRef = useRef(new Set<string>());
 
   const prefetchChat = useCallback(
@@ -71,9 +92,6 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     [router, sessionId],
   );
 
-  // Track the position where the Changes tab should appear in the tab list.
-  // When a diff file is first opened, record the current chat count so the
-  // Changes tab is inserted at that position (like any other tab).
   const [changesTabIndex, setChangesTabIndex] = useState<number | null>(null);
   useEffect(() => {
     const isChangesVisible = !changesTabDismissed && !!focusedDiffFile;
@@ -84,11 +102,29 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     }
   }, [focusedDiffFile, changesTabDismissed, chats.length, changesTabIndex]);
 
+  const [fileTabIndex, setFileTabIndex] = useState<number | null>(null);
+  useEffect(() => {
+    const isFileVisible = !fileTabDismissed && !!focusedFilePath;
+    if (isFileVisible && fileTabIndex === null) {
+      setFileTabIndex(
+        chats.length + (!changesTabDismissed && !!focusedDiffFile ? 1 : 0),
+      );
+    } else if (!isFileVisible) {
+      setFileTabIndex(null);
+    }
+  }, [
+    focusedFilePath,
+    fileTabDismissed,
+    chats.length,
+    fileTabIndex,
+    changesTabDismissed,
+    focusedDiffFile,
+  ]);
+
   const handleNewChat = () => {
     const { chat } = createChat();
     switchChat(chat.id);
     setActiveView("chat");
-    // Scroll to the rightmost tab after the new chat is added
     requestAnimationFrame(() => {
       scrollContainerRef.current?.scrollTo({
         left: scrollContainerRef.current.scrollWidth,
@@ -107,11 +143,20 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     [setActiveView, setFocusedDiffFile, setChangesTabDismissed],
   );
 
+  const handleCloseFile = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setActiveView("chat");
+      setFocusedFilePath(null);
+      setFileTabDismissed(true);
+    },
+    [setActiveView, setFocusedFilePath, setFileTabDismissed],
+  );
+
   const handleStartRename = useCallback(
     (chatId: string, currentTitle: string) => {
       setRenamingChatId(chatId);
       setRenameValue(currentTitle || "");
-      // Focus happens via useEffect-like behavior after render
       setTimeout(() => renameInputRef.current?.select(), 0);
     },
     [],
@@ -135,14 +180,12 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
     const idToDelete = deletingChatId;
     setDeletingChatId(null);
 
-    // Delete first, then navigate if needed
     try {
       await deleteChat(idToDelete);
     } catch (err) {
       console.error("Failed to delete chat:", err);
     }
 
-    // If we deleted the active chat, switch to another one
     if (idToDelete === activeChatId) {
       const remaining = chats.filter((c) => c.id !== idToDelete);
       if (remaining.length > 0) {
@@ -154,6 +197,12 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
   const canDelete = chats.length > 1;
   const showChangesTab = !changesTabDismissed && !!focusedDiffFile;
   const insertAt = showChangesTab ? (changesTabIndex ?? chats.length) : null;
+  const showFileTab = !fileTabDismissed && !!focusedFilePath;
+  const fileInsertAt = showFileTab
+    ? (fileTabIndex ?? chats.length + (showChangesTab ? 1 : 0))
+    : null;
+  const fileTabFileName =
+    focusedFilePath?.split("/").pop() ?? focusedFilePath ?? "";
 
   const tabElements = useMemo(() => {
     const changesTabEl = showChangesTab ? (
@@ -184,11 +233,42 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
       </div>
     ) : null;
 
+    const fileTabEl = showFileTab ? (
+      <div
+        key="__file__"
+        className={cn(
+          "group relative flex shrink-0 items-center border-b-2 transition-colors",
+          activeView === "file"
+            ? "border-foreground text-foreground"
+            : "border-transparent text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <button
+          type="button"
+          onClick={() => setActiveView("file")}
+          className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium"
+        >
+          <FileText className="h-3.5 w-3.5" />
+          <span className="max-w-[120px] truncate">{fileTabFileName}</span>
+        </button>
+        <button
+          type="button"
+          onClick={handleCloseFile}
+          className="mr-1 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+        >
+          <X className="h-3 w-3" />
+        </button>
+      </div>
+    ) : null;
+
     const elements: ReactNode[] = [];
 
     chats.forEach((chat, index) => {
       if (insertAt === index) {
         elements.push(changesTabEl);
+      }
+      if (fileInsertAt === index) {
+        elements.push(fileTabEl);
       }
 
       const isActive = chat.id === activeChatId && activeView === "chat";
@@ -281,21 +361,29 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
       elements.push(changesTabEl);
     }
 
+    if (fileInsertAt !== null && fileInsertAt >= chats.length) {
+      elements.push(fileTabEl);
+    }
+
     return elements;
   }, [
     activeChatId,
     activeView,
     canDelete,
     chats,
+    fileInsertAt,
+    fileTabFileName,
     handleCloseChanges,
+    handleCloseFile,
     handleFinishRename,
     handleStartRename,
     insertAt,
-    renamingChatId,
     prefetchChat,
     renameValue,
+    renamingChatId,
     setActiveView,
     showChangesTab,
+    showFileTab,
     switchChat,
   ]);
 
@@ -308,7 +396,6 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
         >
           {tabElements}
 
-          {/* New chat button — always last */}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -324,7 +411,6 @@ export function ChatTabs({ activeChatId }: ChatTabsProps) {
         </div>
       </div>
 
-      {/* Delete confirmation dialog */}
       <Dialog
         open={deletingChatId !== null}
         onOpenChange={(open) => {
