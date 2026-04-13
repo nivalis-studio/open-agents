@@ -64,7 +64,7 @@ mock.module("@/lib/db/usage", () => ({
   recordUsage: spies.recordUsage,
 }));
 
-mock.module("@open-harness/agent", () => ({
+mock.module("@open-agents/agent", () => ({
   collectTaskToolUsageEvents: spies.collectTaskToolUsageEvents,
   sumLanguageModelUsage: spies.sumLanguageModelUsage,
 }));

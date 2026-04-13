@@ -8,7 +8,7 @@ import {
   pruneMessages,
   type UIMessageChunk,
 } from "ai";
-import type { OpenHarnessAgentCallOptions } from "@open-harness/agent";
+import type { OpenAgentCallOptions } from "@open-agents/agent";
 import { getWorkflowMetadata, getWritable } from "workflow";
 import { getRun } from "workflow/api";
 import { addLanguageModelUsage } from "./usage-utils";
@@ -38,7 +38,7 @@ type Options = {
   sessionId: string;
   userId: string;
   modelId: string;
-  agentOptions: OpenHarnessAgentCallOptions;
+  agentOptions: OpenAgentCallOptions;
   maxSteps?: number;
   /** Whether auto-commit+push should run after a natural finish. */
   autoCommitEnabled?: boolean;
@@ -678,7 +678,7 @@ const runAgentStep = async (
   chatId: string,
   sessionId: string,
   selectedModelId: string,
-  agentOptions: OpenHarnessAgentCallOptions,
+  agentOptions: OpenAgentCallOptions,
 ) => {
   "use step";
 

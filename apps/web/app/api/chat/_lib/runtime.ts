@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { discoverSkills } from "@open-harness/agent";
-import { connectSandbox } from "@open-harness/sandbox";
+import { discoverSkills } from "@open-agents/agent";
+import { connectSandbox } from "@open-agents/sandbox";
 import { getRepoToken } from "@/lib/github/get-repo-token";
 import { buildGitHubAuthRemoteUrl } from "@/lib/github/repo-identifiers";
 import { getUserGitHubToken } from "@/lib/github/user-token";

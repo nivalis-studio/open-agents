@@ -1,4 +1,4 @@
-import type { AgentModelSelection } from "@open-harness/agent";
+import type { AgentModelSelection } from "@open-agents/agent";
 import { type ModelVariant, resolveModelSelection } from "@/lib/model-variants";
 import { DEFAULT_MODEL_ID } from "@/lib/models";
 

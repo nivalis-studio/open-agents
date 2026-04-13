@@ -122,7 +122,7 @@ mock.module("@/lib/sandbox/lifecycle-kick", () => ({
   },
 }));
 
-mock.module("@open-harness/sandbox", () => ({
+mock.module("@open-agents/sandbox", () => ({
   connectSandbox: async (config: ConnectConfig) => {
     connectConfigs.push(config);
 
@@ -185,7 +185,7 @@ describe("/api/sandbox lifecycle kicks", () => {
       lifecycleVersion: 3,
       sandboxState: { type: "vercel" },
       vercelProjectId: "project-1",
-      vercelProjectName: "open-harness-web",
+      vercelProjectName: "open-agents-web",
       vercelTeamId: "team-1",
       globalSkillRefs: [],
     };
@@ -276,7 +276,7 @@ describe("/api/sandbox lifecycle kicks", () => {
       {
         path: "/vercel/sandbox/.vercel/project.json",
         content:
-          '{\n  "orgId": "team-1",\n  "projectId": "project-1",\n  "projectName": "open-harness-web"\n}\n',
+          '{\n  "orgId": "team-1",\n  "projectId": "project-1",\n  "projectName": "open-agents-web"\n}\n',
       },
     ]);
 
@@ -321,7 +321,7 @@ describe("/api/sandbox lifecycle kicks", () => {
       {
         path: "/vercel/sandbox/.vercel/project.json",
         content:
-          '{\n  "orgId": "team-1",\n  "projectId": "project-1",\n  "projectName": "open-harness-web"\n}\n',
+          '{\n  "orgId": "team-1",\n  "projectId": "project-1",\n  "projectName": "open-agents-web"\n}\n',
       },
     ]);
   });

@@ -3,7 +3,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 const DEPLOY_TEMPLATE_URL =
-  "https://vercel.com/new/clone?repository-url=https://github.com/vercel-labs/open-harness";
+  "https://vercel.com/new/clone?repository-url=https://github.com/vercel-labs/open-agents";
 
 export const metadata: Metadata = {
   title: "Deploy your own",
