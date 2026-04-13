@@ -22,7 +22,7 @@ import { TodoRenderer } from "./renderers/todo-renderer";
 import { AskUserQuestionRenderer } from "./renderers/ask-user-question-renderer";
 import { FetchRenderer } from "./renderers/fetch-renderer";
 import { SkillRenderer } from "./renderers/skill-renderer";
-import { McpRenderer } from "./renderers/mcp-renderer";
+import { McpRenderer } from "./renderers/mcp";
 
 export type ToolCallProps = {
   part: WebAgentUIToolPart;
