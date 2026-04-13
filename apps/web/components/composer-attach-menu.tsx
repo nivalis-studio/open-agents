@@ -1,12 +1,12 @@
 "use client";
 
 import {
+  ChevronLeft,
+  ChevronRight,
   Paperclip,
   Plus,
   Plug,
   Settings2,
-  ChevronDown,
-  ChevronRight,
 } from "lucide-react";
 import { McpProviderIcon } from "@/components/mcp-icons";
 import Link from "next/link";
@@ -37,6 +37,8 @@ interface ComposerAttachMenuProps {
   disabled?: boolean;
 }
 
+type MenuView = "main" | "mcp";
+
 export function ComposerAttachMenu({
   sessionId,
   enabledMcpConnectionIds,
@@ -44,7 +46,7 @@ export function ComposerAttachMenu({
   disabled,
 }: ComposerAttachMenuProps) {
   const [open, setOpen] = useState(false);
-  const [mcpExpanded, setMcpExpanded] = useState(false);
+  const [view, setView] = useState<MenuView>("main");
   const [enabledIds, setEnabledIds] = useState<string[]>(
     enabledMcpConnectionIds,
   );
@@ -55,10 +57,17 @@ export function ComposerAttachMenu({
     fetcher,
   );
 
-  // Sync from props when they change externally
   useEffect(() => {
     setEnabledIds(enabledMcpConnectionIds);
   }, [enabledMcpConnectionIds]);
+
+  // Reset to main view when popover closes
+  useEffect(() => {
+    if (!open) {
+      const timer = setTimeout(() => setView("main"), 150);
+      return () => clearTimeout(timer);
+    }
+  }, [open]);
 
   const activeConnections = connections?.filter((c) => c.status === "active");
 
@@ -78,11 +87,9 @@ export function ComposerAttachMenu({
           body: JSON.stringify({ enabledMcpConnectionIds: newIds }),
         });
         if (!res.ok) {
-          // Revert on failure
           setEnabledIds(enabledIds);
         }
       } catch {
-        // Revert on failure
         setEnabledIds(enabledIds);
       } finally {
         setSaving(false);
@@ -113,90 +120,97 @@ export function ComposerAttachMenu({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0" align="start" sideOffset={8}>
-        {/* Upload from computer */}
-        <button
-          type="button"
-          className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
-          onClick={() => {
-            onUploadFile();
-            setOpen(false);
-          }}
-        >
-          <Paperclip className="size-4 text-muted-foreground" />
-          <span>Upload from computer</span>
-        </button>
-
-        {/* MCP section */}
-        {hasMcpConnections && (
-          <>
-            <div className="border-t border-border" />
+        {view === "main" ? (
+          /* ── Main menu ── */
+          <div>
             <button
               type="button"
-              className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
-              onClick={() => setMcpExpanded(!mcpExpanded)}
+              className="flex w-full items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+              onClick={() => {
+                onUploadFile();
+                setOpen(false);
+              }}
             >
-              <div className="flex items-center gap-2.5">
-                <Plug className="size-4 text-muted-foreground" />
-                <span>MCPs</span>
-                {enabledCount > 0 && (
-                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary">
-                    {enabledCount} active
-                  </span>
-                )}
-              </div>
-              {mcpExpanded ? (
-                <ChevronDown className="size-3.5 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="size-3.5 text-muted-foreground" />
-              )}
+              <Paperclip className="size-4 text-muted-foreground" />
+              <span>Upload from computer</span>
             </button>
 
-            {mcpExpanded && (
-              <div className="border-t border-border/50">
-                <div className="max-h-48 overflow-y-auto py-1">
-                  {activeConnections.map((conn) => (
-                    <button
-                      type="button"
-                      key={conn.id}
-                      className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-1.5 hover:bg-muted/50"
-                      onClick={() =>
-                        void handleToggle(
-                          conn.id,
-                          !enabledIds.includes(conn.id),
-                        )
-                      }
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <McpProviderIcon
-                          provider={conn.provider ?? "custom"}
-                          className="size-4"
-                        />
-                        <span className="text-sm truncate">{conn.name}</span>
-                      </div>
-                      <Switch
-                        checked={enabledIds.includes(conn.id)}
-                        onCheckedChange={(checked) =>
-                          void handleToggle(conn.id, checked)
-                        }
-                        disabled={saving}
-                        className="scale-75"
-                      />
-                    </button>
-                  ))}
-                </div>
-                <div className="border-t border-border px-3 py-2">
-                  <Link
-                    href="/settings/connections"
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setOpen(false)}
-                  >
-                    <Settings2 className="size-3" />
-                    Manage MCPs
-                  </Link>
-                </div>
-              </div>
+            {hasMcpConnections && (
+              <>
+                <div className="border-t border-border" />
+                <button
+                  type="button"
+                  className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+                  onClick={() => setView("mcp")}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Plug className="size-4 text-muted-foreground" />
+                    <span>MCPs</span>
+                    {enabledCount > 0 && (
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[10px] font-medium text-primary">
+                        {enabledCount}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronRight className="size-3.5 text-muted-foreground" />
+                </button>
+              </>
             )}
-          </>
+          </div>
+        ) : (
+          /* ── MCP submenu ── */
+          <div>
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 border-b border-border px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
+              onClick={() => setView("main")}
+            >
+              <ChevronLeft className="size-3.5 text-muted-foreground" />
+              <span className="text-xs font-medium text-muted-foreground">
+                Back
+              </span>
+            </button>
+
+            <div className="max-h-48 overflow-y-auto py-1">
+              {activeConnections?.map((conn) => (
+                <button
+                  type="button"
+                  key={conn.id}
+                  className="flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-1.5 hover:bg-muted/50"
+                  onClick={() =>
+                    void handleToggle(conn.id, !enabledIds.includes(conn.id))
+                  }
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <McpProviderIcon
+                      provider={conn.provider ?? "custom"}
+                      className="size-4"
+                    />
+                    <span className="text-sm truncate">{conn.name}</span>
+                  </div>
+                  <Switch
+                    checked={enabledIds.includes(conn.id)}
+                    onCheckedChange={(checked) =>
+                      void handleToggle(conn.id, checked)
+                    }
+                    disabled={saving}
+                    className="scale-75"
+                  />
+                </button>
+              ))}
+            </div>
+
+            <div className="border-t border-border px-3 py-2">
+              <Link
+                href="/settings/connections"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                onClick={() => setOpen(false)}
+              >
+                <Settings2 className="size-3" />
+                Manage MCPs
+              </Link>
+            </div>
+          </div>
         )}
       </PopoverContent>
     </Popover>
