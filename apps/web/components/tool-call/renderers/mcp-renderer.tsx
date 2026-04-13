@@ -124,37 +124,131 @@ function extractOutputText(output: unknown): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// Search result types & parsing
+// Structured output types & parsing
 // ---------------------------------------------------------------------------
 
 interface SearchResult {
   title: string;
-  url: string;
-  type: string;
+  url?: string;
+  type?: string;
   highlight?: string;
   timestamp?: string;
   id?: string;
 }
 
-function tryParseSearchResults(
-  output: unknown,
-): { results: SearchResult[] } | null {
+interface PageResult {
+  title: string;
+  url?: string;
+  text?: string;
+  metadata?: Record<string, unknown>;
+}
+
+type TableRow = Record<string, unknown>;
+
+type StructuredOutput =
+  | { kind: "search"; results: SearchResult[] }
+  | { kind: "page"; page: PageResult }
+  | { kind: "table"; rows: TableRow[]; columns: string[] };
+
+function isValidExternalUrl(url: unknown): url is string {
+  if (typeof url !== "string" || !url) return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Format an ISO timestamp or relative timestamp string into a short relative label.
+ */
+function formatTimestamp(ts: string): string {
+  // Already a relative string like "Past day" or "2 months ago"
+  const cleaned = ts.replace(/\s*\([\d-]+\)\s*$/, "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}/.test(cleaned)) return cleaned;
+
+  // ISO timestamp — convert to relative
+  try {
+    const date = new Date(cleaned);
+    if (Number.isNaN(date.getTime())) return cleaned;
+    const now = Date.now();
+    const diffMs = now - date.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDays = Math.floor(diffHr / 24);
+    if (diffDays < 30) return `${diffDays}d ago`;
+    const diffMonths = Math.floor(diffDays / 30);
+    if (diffMonths < 12) return `${diffMonths}mo ago`;
+    return `${Math.floor(diffMonths / 12)}y ago`;
+  } catch {
+    return cleaned;
+  }
+}
+
+function tryParseStructuredOutput(output: unknown): StructuredOutput | null {
   const text = extractOutputText(output);
   if (!text) return null;
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;
-    if (
-      parsed?.results &&
-      Array.isArray(parsed.results) &&
-      parsed.results.length > 0
-    ) {
+
+    // Search results: { results: [{ title, url?, type? }], type: "ai_search" }
+    if (Array.isArray(parsed.results) && parsed.results.length > 0) {
       const first = parsed.results[0] as Record<string, unknown>;
-      if (first.title && first.url) {
-        return { results: parsed.results as SearchResult[] };
+
+      // Has title field → search-style results
+      if (typeof first.title === "string" || typeof first.Name === "string") {
+        // Check if it looks like a table (objects with named fields, no url/type)
+        const hasUrls = parsed.results.some(
+          (r: Record<string, unknown>) =>
+            isValidExternalUrl(r.url) || typeof r.type === "string",
+        );
+
+        if (hasUrls) {
+          return {
+            kind: "search",
+            results: (parsed.results as Record<string, unknown>[]).map((r) => ({
+              title: (r.title as string) ?? (r.Name as string) ?? "Untitled",
+              url: isValidExternalUrl(r.url) ? (r.url as string) : undefined,
+              type: (r.type as string) ?? undefined,
+              timestamp: (r.timestamp as string) ?? undefined,
+              highlight: (r.highlight as string) ?? undefined,
+              id: (r.id as string) ?? undefined,
+            })),
+          };
+        }
+
+        // Table-like data (array of objects with named keys)
+        const columns = Object.keys(first).filter(
+          (k) => k !== "id" && k !== "data_source_ids",
+        );
+        return {
+          kind: "table",
+          rows: parsed.results as TableRow[],
+          columns,
+        };
       }
     }
+
+    // Single page result: { metadata, title, url, text }
+    if (typeof parsed.title === "string" && typeof parsed.text === "string") {
+      return {
+        kind: "page",
+        page: {
+          title: parsed.title as string,
+          url: isValidExternalUrl(parsed.url)
+            ? (parsed.url as string)
+            : undefined,
+          text: parsed.text as string,
+          metadata: parsed.metadata as Record<string, unknown> | undefined,
+        },
+      };
+    }
   } catch {
-    // not JSON or not search results
+    // not JSON
   }
   return null;
 }
@@ -303,39 +397,123 @@ function SourceTypeIcon({
   }
 }
 
-/**
- * Clean up a timestamp like "Past day (2026-04-10)" → "Past day",
- * or "2 months ago (2026-02-06)" → "2 months ago".
- */
-function cleanTimestamp(ts: string): string {
-  return ts.replace(/\s*\([\d-]+\)\s*$/, "").trim();
-}
-
 // ---------------------------------------------------------------------------
 // Search result item
 // ---------------------------------------------------------------------------
 
 function SearchResultItem({ result }: { result: SearchResult }) {
+  const hasLink = isValidExternalUrl(result.url);
+  const Tag = hasLink ? "a" : "div";
+  const linkProps = hasLink
+    ? {
+        href: result.url!,
+        target: "_blank" as const,
+        rel: "noopener noreferrer",
+      }
+    : {};
+
   return (
-    <a
-      href={result.url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="group/result flex items-center gap-2 rounded px-1.5 py-1 hover:bg-muted/50 transition-colors"
+    <Tag
+      {...linkProps}
+      className="group/result flex items-center gap-1.5 rounded px-1.5 py-1 hover:bg-muted/50 transition-colors"
     >
-      <SourceTypeIcon type={result.type} className="size-3 shrink-0" />
+      <SourceTypeIcon
+        type={result.type ?? "unknown"}
+        className="size-3 shrink-0"
+      />
       <span className="text-[11px] font-medium text-foreground/90 truncate">
         {result.title}
       </span>
-      <span className="shrink-0 ml-auto flex items-center gap-1.5">
-        {result.timestamp && (
-          <span className="text-[10px] text-muted-foreground/50">
-            {cleanTimestamp(result.timestamp)}
-          </span>
-        )}
-        <ExternalLink className="size-3 text-muted-foreground/0 group-hover/result:text-muted-foreground/50 transition-colors" />
-      </span>
-    </a>
+      {result.timestamp && (
+        <span className="text-[10px] text-muted-foreground/40 shrink-0">
+          {formatTimestamp(result.timestamp)}
+        </span>
+      )}
+      {hasLink && (
+        <ExternalLink className="size-3 shrink-0 ml-auto text-muted-foreground/0 group-hover/result:text-muted-foreground/50 transition-colors" />
+      )}
+    </Tag>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Page result view
+// ---------------------------------------------------------------------------
+
+function PageResultView({ page }: { page: PageResult }) {
+  const hasLink = isValidExternalUrl(page.url);
+  // Strip XML-like tags for a cleaner preview
+  const preview = page.text
+    ?.replace(/<[^>]+>/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 800);
+
+  return (
+    <div className="ml-4 space-y-1.5">
+      {hasLink && (
+        <a
+          href={page.url!}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group/page inline-flex items-center gap-1.5 text-[11px] font-medium text-primary hover:underline"
+        >
+          <NotionLogo className="size-3 shrink-0" />
+          {page.title}
+          <ExternalLink className="size-2.5 opacity-0 group-hover/page:opacity-70 transition-opacity" />
+        </a>
+      )}
+      {preview && (
+        <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md border border-border/50 bg-muted/20 px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground/70">
+          {preview}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Table result view
+// ---------------------------------------------------------------------------
+
+function TableResultView({
+  rows,
+  columns,
+}: {
+  rows: TableRow[];
+  columns: string[];
+}) {
+  // Find a "name" or "title" column for the primary display
+  const nameCol = columns.find((c) => /^(name|title)$/i.test(c));
+  const otherCols = columns.filter((c) => c !== nameCol && c !== "has_more");
+
+  return (
+    <div className="ml-4 space-y-0">
+      {rows.map((row, i) => {
+        const name = nameCol ? String(row[nameCol] ?? "") : `Row ${i + 1}`;
+        const detail = otherCols
+          .map((c) => {
+            const val = row[c];
+            if (val == null || val === "") return null;
+            return `${c}: ${String(val)}`;
+          })
+          .filter(Boolean)
+          .join(" · ");
+
+        return (
+          <div key={i} className="flex flex-col gap-0.5 rounded px-1.5 py-1">
+            <span className="text-[11px] font-medium text-foreground/90">
+              {name}
+            </span>
+            {detail && (
+              <span className="text-[10px] text-muted-foreground/60 line-clamp-2">
+                {detail}
+              </span>
+            )}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -364,23 +542,34 @@ export function McpRenderer({
   const expandedContent = useMemo(() => {
     if (rawOutput == null) return undefined;
 
-    // Try to parse structured search results
-    const parsed = tryParseSearchResults(rawOutput);
-    if (parsed) {
-      return (
-        <div className="ml-4 space-y-0">
-          {parsed.results.map((result, i) => (
-            <SearchResultItem key={result.id ?? i} result={result} />
-          ))}
-        </div>
-      );
+    const structured = tryParseStructuredOutput(rawOutput);
+    if (structured) {
+      switch (structured.kind) {
+        case "search":
+          return (
+            <div className="ml-4 space-y-0">
+              {structured.results.map((result, i) => (
+                <SearchResultItem key={result.id ?? i} result={result} />
+              ))}
+            </div>
+          );
+        case "page":
+          return <PageResultView page={structured.page} />;
+        case "table":
+          return (
+            <TableResultView
+              rows={structured.rows}
+              columns={structured.columns}
+            />
+          );
+      }
     }
 
     // Fallback: formatted text
     const text = extractOutputText(rawOutput);
     if (!text || text.length === 0) return undefined;
     return (
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border/50 bg-muted/20 px-3 py-2 font-mono text-xs leading-relaxed text-foreground/80">
+      <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border/50 bg-muted/20 px-3 py-2 font-mono text-[11px] leading-relaxed text-foreground/70">
         {text}
       </pre>
     );
