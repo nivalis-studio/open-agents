@@ -1,6 +1,5 @@
 "use client";
 
-import type { TaskToolUIPart } from "@open-harness/agent";
 import { isReasoningUIPart, isToolUIPart } from "ai";
 import {
   ArrowRight,
@@ -23,7 +22,6 @@ import {
 } from "@/components/assistant-file-link";
 import { AssistantMessageGroups } from "@/components/assistant-message-groups";
 import { SnippetChip } from "@/components/snippet-chip";
-import { TaskGroupView } from "@/components/task-group-view";
 import { ThinkingBlock } from "@/components/thinking-block";
 import { ToolCall } from "@/components/tool-call";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -309,16 +307,12 @@ function SharedMessage({
   isStreaming: boolean;
   lastUserMessageSentAt: string | null;
 }) {
+  // Group consecutive reasoning parts (same as session chat)
   type RenderGroup =
     | {
         type: "part";
         part: WebAgentUIMessagePart;
         index: number;
-      }
-    | {
-        type: "task-group";
-        tasks: TaskToolUIPart[];
-        startIndex: number;
       }
     | {
         type: "reasoning-group";
@@ -327,23 +321,8 @@ function SharedMessage({
       };
 
   const renderGroups: RenderGroup[] = [];
-  let currentTaskGroup: TaskToolUIPart[] = [];
-  let taskGroupStartIndex = 0;
   let currentReasoningGroup: ReasoningMessagePart[] = [];
   let reasoningGroupStartIndex = 0;
-
-  const flushTaskGroup = () => {
-    if (currentTaskGroup.length === 0) {
-      return;
-    }
-
-    renderGroups.push({
-      type: "task-group",
-      tasks: currentTaskGroup,
-      startIndex: taskGroupStartIndex,
-    });
-    currentTaskGroup = [];
-  };
 
   const flushReasoningGroup = () => {
     if (currentReasoningGroup.length === 0) {
@@ -359,17 +338,7 @@ function SharedMessage({
   };
 
   m.parts.forEach((part, index) => {
-    if (isToolUIPart(part) && part.type === "tool-task") {
-      flushReasoningGroup();
-      if (currentTaskGroup.length === 0) {
-        taskGroupStartIndex = index;
-      }
-      currentTaskGroup.push(part as TaskToolUIPart);
-      return;
-    }
-
     if (isReasoningUIPart(part)) {
-      flushTaskGroup();
       if (currentReasoningGroup.length === 0) {
         reasoningGroupStartIndex = index;
       }
@@ -377,12 +346,10 @@ function SharedMessage({
       return;
     }
 
-    flushTaskGroup();
     flushReasoningGroup();
     renderGroups.push({ type: "part", part, index });
   });
 
-  flushTaskGroup();
   flushReasoningGroup();
 
   const streamdownComponents = useMemo(
@@ -396,28 +363,12 @@ function SharedMessage({
 
   const renderGroupElements = (isExpanded: boolean) =>
     renderGroups.map((group) => {
-      if (group.type === "task-group") {
-        if (!isExpanded) return null;
-        return (
-          <div
-            key={`${m.id}-task-group-${group.startIndex}`}
-            className="max-w-full"
-          >
-            <TaskGroupView
-              taskParts={group.tasks}
-              activeApprovalId={null}
-              isStreaming={false}
-            />
-          </div>
-        );
-      }
-
       if (group.type === "reasoning-group") {
         if (!isExpanded) return null;
         return (
           <div
             key={`${m.id}-reasoning-group-${group.startIndex}`}
-            className="flex justify-start"
+            className="max-w-full pl-[22px]"
           >
             <ThinkingBlock
               text={getReasoningGroupText(group.parts)}
@@ -434,19 +385,44 @@ function SharedMessage({
       if (isReasoningUIPart(p)) {
         if (!isExpanded) return null;
         return (
-          <div key={`${m.id}-${i}`} className="flex justify-start">
+          <div key={`${m.id}-${i}`} className="max-w-full pl-[22px]">
             <ThinkingBlock text={p.text} isStreaming={false} />
           </div>
         );
       }
 
       if (p.type === "text") {
+        if (p.text.length === 0) {
+          return null;
+        }
+
+        const isFinalAssistantTextPart =
+          m.role === "assistant" &&
+          !m.parts
+            .slice(i + 1)
+            .some((messagePart) => messagePart.type === "text");
+
+        // When collapsed, hide every text part except the final one
+        if (
+          !isExpanded &&
+          m.role === "assistant" &&
+          !isFinalAssistantTextPart
+        ) {
+          return null;
+        }
+
         return (
           <div
             key={`${m.id}-${i}`}
             className={cn(
-              "flex min-w-0",
+              "flex min-w-0 py-2",
               m.role === "user" ? "justify-end" : "justify-start",
+              // Breathing room above final assistant text after tool calls
+              isFinalAssistantTextPart && i > 0 && "mt-4",
+              // Indent non-final text parts (they're collapsible content)
+              m.role === "assistant" &&
+                !isFinalAssistantTextPart &&
+                "pl-[22px]",
             )}
           >
             {m.role === "user" ? (
@@ -472,13 +448,16 @@ function SharedMessage({
       if (isToolUIPart(p)) {
         if (!isExpanded) return null;
         return (
-          <div key={`${m.id}-${i}`} className="max-w-full">
+          <div key={`${m.id}-${i}`} className="max-w-full pl-[22px]">
             <ToolCall part={p as WebAgentUIToolPart} isStreaming={false} />
           </div>
         );
       }
 
       if (p.type === "file" && p.mediaType?.startsWith("image/")) {
+        if (!isExpanded && m.role === "assistant") {
+          return null;
+        }
         return (
           <div key={`${m.id}-${i}`} className="flex justify-end">
             <div className="max-w-[80%]">
@@ -510,7 +489,7 @@ function SharedMessage({
     });
 
   if (isUser) {
-    return <div className="space-y-1">{renderGroupElements(true)}</div>;
+    return <div className="flex flex-col gap-1">{renderGroupElements(true)}</div>;
   }
 
   // Assistant messages: wrap with collapsible summary bar (same as session chat)
