@@ -5,6 +5,7 @@ import {
   type SessionRecord,
 } from "@/app/api/sessions/_lib/session-context";
 import { getGitHubAccount } from "@/lib/db/accounts";
+import { consumeUserRateLimit } from "@/lib/db/api-rate-limits";
 import { updateSession } from "@/lib/db/sessions";
 import { parseGitHubUrl } from "@/lib/github/client";
 import { getUserGitHubToken } from "@/lib/github/user-token";
@@ -40,6 +41,12 @@ interface CreateSandboxRequest {
   sessionId?: string;
   sandboxType?: "vercel";
 }
+
+const SAFE_BRANCH_PATTERN = /^[\w\-/.]+$/;
+const SANDBOX_CREATE_RATE_LIMIT = {
+  maxRequests: 5,
+  windowMs: 15 * 60_000,
+} as const;
 
 // async function syncVercelProjectEnvVarsToSandbox(params: {
 //   userId: string;
@@ -116,6 +123,10 @@ export async function POST(req: Request) {
 
   const { repoUrl, branch = "main", isNewBranch = false, sessionId } = body;
 
+  if (!SAFE_BRANCH_PATTERN.test(branch)) {
+    return Response.json({ error: "Invalid branch name" }, { status: 400 });
+  }
+
   // Get session for auth
   const session = await getServerSession();
   if (!session?.user) {
@@ -123,9 +134,9 @@ export async function POST(req: Request) {
   }
 
   const githubToken = await getUserGitHubToken(session.user.id);
+  const parsedRepo = repoUrl ? parseGitHubUrl(repoUrl) : null;
 
   if (repoUrl) {
-    const parsedRepo = parseGitHubUrl(repoUrl);
     if (!parsedRepo) {
       return Response.json(
         { error: "Invalid GitHub repository URL" },
@@ -155,6 +166,21 @@ export async function POST(req: Request) {
     sessionRecord = sessionContext.sessionRecord;
   }
 
+  const rateLimitResult = await consumeUserRateLimit({
+    userId: session.user.id,
+    action: "sandbox-create",
+    ...SANDBOX_CREATE_RATE_LIMIT,
+  });
+  if (!rateLimitResult.allowed) {
+    return Response.json(
+      { error: "Too many sandbox creation requests. Please try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimitResult.retryAfterSeconds) },
+      },
+    );
+  }
+
   const sandboxName = sessionId ? getSessionSandboxName(sessionId) : undefined;
   const githubAccount = await getGitHubAccount(session.user.id);
   const githubNoreplyEmail =
@@ -175,9 +201,9 @@ export async function POST(req: Request) {
   // ============================================
   const startTime = Date.now();
 
-  const source = repoUrl
+  const source = parsedRepo
     ? {
-        repo: repoUrl,
+        repo: parsedRepo.cloneUrl,
         branch: isNewBranch ? undefined : branch,
         newBranch: isNewBranch ? branch : undefined,
       }

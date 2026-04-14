@@ -1,6 +1,7 @@
 import { createUIMessageStreamResponse, type InferUIMessageChunk } from "ai";
 import { start } from "workflow/api";
 import type { WebAgentUIMessage } from "@/app/types";
+import { consumeUserRateLimit } from "@/lib/db/api-rate-limits";
 import {
   compareAndSetChatActiveStreamId,
   countUserMessagesByUserId,
@@ -36,6 +37,11 @@ import { persistAssistantMessagesWithToolResults } from "./_lib/persist-tool-res
 export const maxDuration = 800;
 
 type WebAgentUIMessageChunk = InferUIMessageChunk<WebAgentUIMessage>;
+
+const CHAT_WORKFLOW_RATE_LIMIT = {
+  maxRequests: 12,
+  windowMs: 60_000,
+} as const;
 
 function getLatestUserMessage(messages: WebAgentUIMessage[]) {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -128,6 +134,21 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+  }
+
+  const rateLimitResult = await consumeUserRateLimit({
+    userId,
+    action: "chat-workflow-start",
+    ...CHAT_WORKFLOW_RATE_LIMIT,
+  });
+  if (!rateLimitResult.allowed) {
+    return Response.json(
+      { error: "Too many chat requests. Please wait a moment and try again." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimitResult.retryAfterSeconds) },
+      },
+    );
   }
 
   const requestStartedAt = new Date();

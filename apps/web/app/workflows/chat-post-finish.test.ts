@@ -15,6 +15,7 @@ const sandboxExec = mock(() =>
 
 const spies = {
   compareAndSetChatActiveStreamId: mock(() => Promise.resolve(true)),
+  getUserGitHubToken: mock(() => Promise.resolve("github-user-token")),
   createChatMessageIfNotExists: mock(
     () =>
       Promise.resolve(createChatMessageIfNotExistsResult) as Promise<unknown>,
@@ -76,6 +77,10 @@ mock.module("@/lib/sandbox/lifecycle", () => ({
 
 mock.module("@open-harness/sandbox", () => ({
   connectSandbox: spies.connectSandbox,
+}));
+
+mock.module("@/lib/github/user-token", () => ({
+  getUserGitHubToken: spies.getUserGitHubToken,
 }));
 
 mock.module("@/lib/diff/compute-diff", () => ({
@@ -402,7 +407,12 @@ describe("runAutoCommitStep", () => {
       sandboxState: { type: "vercel" } as never,
     });
 
+    expect(spies.getUserGitHubToken).toHaveBeenCalledWith("user-1");
     expect(spies.connectSandbox).toHaveBeenCalledTimes(1);
+    expect(spies.connectSandbox).toHaveBeenCalledWith(
+      { type: "vercel" },
+      { githubToken: "github-user-token" },
+    );
     expect(spies.performAutoCommit).toHaveBeenCalledTimes(1);
     expect(spies.performAutoCommit).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -442,7 +452,12 @@ describe("runAutoCreatePrStep", () => {
       sandboxState: { type: "vercel" } as never,
     });
 
+    expect(spies.getUserGitHubToken).toHaveBeenCalledWith("user-1");
     expect(spies.connectSandbox).toHaveBeenCalledTimes(1);
+    expect(spies.connectSandbox).toHaveBeenCalledWith(
+      { type: "vercel" },
+      { githubToken: "github-user-token" },
+    );
     expect(spies.performAutoCreatePr).toHaveBeenCalledTimes(1);
     expect(spies.performAutoCreatePr).toHaveBeenCalledWith(
       expect.objectContaining({

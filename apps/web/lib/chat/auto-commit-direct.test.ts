@@ -118,14 +118,17 @@ describe("performAutoCommit", () => {
     expect(result).toEqual({ committed: false, pushed: false });
   });
 
-  test("sets up auth remote URL when token available", async () => {
+  test("sets up a brokered origin URL when token available", async () => {
     const result = await performAutoCommit(makeParams());
 
     const setUrlCall = execSpy.mock.calls.find((c) =>
       (c[0] as string).includes("git remote set-url"),
     );
     expect(setUrlCall).toBeDefined();
-    expect(setUrlCall![0] as string).toContain("x-access-token:ghp_test123");
+    expect(setUrlCall![0] as string).toContain(
+      'git remote set-url origin "https://github.com/acme/repo.git"',
+    );
+    expect(setUrlCall![0] as string).not.toContain("x-access-token");
     expect(result.committed).toBe(true);
   });
 

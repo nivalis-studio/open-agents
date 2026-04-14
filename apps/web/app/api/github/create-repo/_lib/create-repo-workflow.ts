@@ -161,12 +161,8 @@ export async function runCreateRepoWorkflow({
     };
   }
 
-  const authUrl = repoResult.cloneUrl.replace(
-    "https://",
-    `https://x-access-token:${repoToken}@`,
-  );
   const addRemoteResult = await sandbox.exec(
-    `git remote add origin "${authUrl}"`,
+    `git remote add origin "${repoResult.cloneUrl}"`,
     cwd,
     5000,
   );

@@ -7,7 +7,9 @@
  * for sandbox bootstrapping flows.
  */
 
+import path from "path";
 import { gunzipSync } from "zlib";
+import { parseGitHubRepoUrl } from "./repo-identifiers";
 
 const DEFAULT_WORKING_DIRECTORY = "/vercel/sandbox";
 
@@ -37,11 +39,6 @@ export interface TarballResult {
   extractMs: number;
 }
 
-interface RepoInfo {
-  owner: string;
-  repo: string;
-}
-
 /**
  * Parse a GitHub URL to extract owner and repo name.
  *
@@ -49,12 +46,38 @@ interface RepoInfo {
  * parseGitHubUrl("https://github.com/vercel/ai")
  * // => { owner: "vercel", repo: "ai" }
  */
-export function parseGitHubUrl(url: string): RepoInfo {
-  const match = url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/);
-  if (!match) {
-    throw new Error(`Invalid GitHub URL: ${url}`);
+export function parseGitHubUrl(url: string) {
+  const parsed = parseGitHubRepoUrl(url);
+  if (!parsed) {
+    throw new Error("Invalid GitHub URL");
   }
-  return { owner: match[1]!, repo: match[2]! };
+  return parsed;
+}
+
+function resolveSafeTarEntryPath(params: {
+  entryName: string;
+  rootDir: string;
+  workingDirectory: string;
+}): string | null {
+  const { entryName, rootDir, workingDirectory } = params;
+  if (!rootDir || !entryName.startsWith(`${rootDir}/`)) {
+    return null;
+  }
+
+  const relativePath = path.posix.normalize(
+    entryName.slice(rootDir.length + 1),
+  );
+  if (
+    !relativePath ||
+    relativePath === "." ||
+    relativePath.startsWith("../") ||
+    relativePath.includes("/../") ||
+    path.posix.isAbsolute(relativePath)
+  ) {
+    return null;
+  }
+
+  return `${workingDirectory.replace(/\/$/, "")}/${relativePath}`;
 }
 
 function buildTarballUrl(owner: string, repo: string, ref: string): string {
@@ -141,12 +164,15 @@ export async function downloadAndExtractTarball(
 
     // Only process regular files (typeFlag '0' or empty)
     if (typeFlag === "0" || typeFlag === "\0" || typeFlag === "") {
-      // Remove root directory prefix
-      const relativePath = name.replace(`${rootDir}/`, "");
+      const safePath = resolveSafeTarEntryPath({
+        entryName: name,
+        rootDir,
+        workingDirectory,
+      });
 
-      if (relativePath && size > 0) {
+      if (safePath && size > 0) {
         // Skip lock files - they're large and not useful for agent exploration
-        const fileName = relativePath.split("/").pop() ?? "";
+        const fileName = safePath.split("/").pop() ?? "";
         if (isLockFile(fileName)) {
           offset += Math.ceil(size / 512) * 512;
           continue;
@@ -159,7 +185,7 @@ export async function downloadAndExtractTarball(
         // Binary files can't be stored in PostgreSQL JSONB
         if (!contentBuffer.includes(0)) {
           const content = contentBuffer.toString("utf-8");
-          files[`${workingDirectory}/${relativePath}`] = content;
+          files[safePath] = content;
         }
         // Binary files are silently skipped - agents work with text files anyway
       }

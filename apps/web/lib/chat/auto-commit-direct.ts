@@ -2,8 +2,8 @@ import type { Sandbox } from "@open-harness/sandbox";
 import { generateText } from "ai";
 import { gateway } from "@open-harness/agent";
 import { getGitHubAccount } from "@/lib/db/accounts";
-import { buildGitHubAuthRemoteUrl } from "@/lib/github/repo-identifiers";
 import { getAppCoAuthorTrailer } from "@/lib/github/app-auth";
+import { buildGitHubRepoUrl } from "@/lib/github/repo-identifiers";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 
 export interface AutoCommitParams {
@@ -43,14 +43,18 @@ export async function performAutoCommit(
   const repoToken = await getUserGitHubToken(userId);
 
   if (repoToken) {
-    const authUrl = buildGitHubAuthRemoteUrl({
-      token: repoToken,
+    const remoteUrl = buildGitHubRepoUrl({
       owner: repoOwner,
       repo: repoName,
+      withGitSuffix: true,
     });
 
-    if (authUrl) {
-      await sandbox.exec(`git remote set-url origin "${authUrl}"`, cwd, 10000);
+    if (remoteUrl) {
+      await sandbox.exec(
+        `git remote set-url origin "${remoteUrl}"`,
+        cwd,
+        10000,
+      );
     }
   }
 

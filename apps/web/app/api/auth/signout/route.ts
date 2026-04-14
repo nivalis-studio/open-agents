@@ -20,8 +20,8 @@ export async function POST(req: NextRequest): Promise<Response> {
             await revokeVercelToken({ token, clientId, clientSecret });
           }
         }
-      } catch (error) {
-        console.error("Failed to revoke Vercel token:", error);
+      } catch {
+        console.error("Failed to revoke Vercel token during signout");
       }
     }
   }

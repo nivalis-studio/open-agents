@@ -107,20 +107,11 @@ async function syncGitHubCredentialBrokering(
   );
 }
 
-function buildAuthenticatedGitHubUrl(
-  repoUrl: string,
-  token: string,
-): string | null {
-  const githubUrlMatch = repoUrl.match(
-    /github\.com[/:]([^/]+)\/([^/]+?)(?:\.git)?$/,
+function sanitizeGitCommandOutput(output: string): string {
+  return output.replace(
+    /https:\/\/x-access-token:[^@\s]+@github\.com/gi,
+    "https://x-access-token:***@github.com",
   );
-
-  if (!githubUrlMatch) {
-    return null;
-  }
-
-  const [, owner, repo] = githubUrlMatch;
-  return `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
 }
 
 type VercelSandboxSession = ReturnType<
@@ -521,6 +512,7 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
 
     // Calculate SDK timeout with buffer for beforeStop hook.
     const sdkTimeout = effectiveTimeout + TIMEOUT_BUFFER_MS;
+    const brokeredGitHubToken = githubToken ?? source?.token;
 
     const createBaseConfig = {
       ...(name ? { name } : {}),
@@ -528,7 +520,7 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       timeout: sdkTimeout,
       runtime,
       persistent,
-      networkPolicy: buildGitHubCredentialBrokeringPolicy(githubToken),
+      networkPolicy: buildGitHubCredentialBrokeringPolicy(brokeredGitHubToken),
       ...(ports && { ports }),
       ...(snapshotExpiration !== undefined && { snapshotExpiration }),
     };
@@ -572,14 +564,11 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
     // clone will fail. Consider using git init + remote add + fetch + checkout
     // instead, which works regardless of existing directory contents.
     if (source && baseSnapshotId) {
-      const cloneUrl = source.token
-        ? (buildAuthenticatedGitHubUrl(source.url, source.token) ?? source.url)
-        : source.url;
       const cloneArgs = ["clone"];
       if (source.branch) {
         cloneArgs.push("--branch", source.branch);
       }
-      cloneArgs.push(cloneUrl, ".");
+      cloneArgs.push(source.url, ".");
 
       const cloneResult = await sdk.runCommand({
         cmd: "git",
@@ -589,7 +578,7 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
 
       if (cloneResult.exitCode !== 0) {
         throw new Error(
-          `Failed to clone repository '${source.url}': ${await cloneResult.stderr()}`,
+          `Failed to clone repository '${source.url}': ${sanitizeGitCommandOutput(await cloneResult.stderr())}`,
         );
       }
     }
@@ -604,22 +593,13 @@ ${hostLine}${portLines}${runtimeEnvLine}`;
       });
     }
 
-    // Configure git to use the token for push operations if provided
-    // We modify the remote URL to embed credentials directly (standard CI/CD approach)
-    // TODO: When baseSnapshotId is set, the token is already embedded in the
-    // clone URL above, making this set-url call redundant for that path.
+    // Configure git to use the brokered GitHub credentials for push operations.
     if (source?.token) {
-      const authenticatedUrl = buildAuthenticatedGitHubUrl(
-        source.url,
-        source.token,
-      );
-      if (authenticatedUrl) {
-        await sdk.runCommand({
-          cmd: "git",
-          args: ["remote", "set-url", "origin", authenticatedUrl],
-          cwd: workingDirectory,
-        });
-      }
+      await sdk.runCommand({
+        cmd: "git",
+        args: ["remote", "set-url", "origin", source.url],
+        cwd: workingDirectory,
+      });
     }
 
     // Configure git user for commits if provided (skip when no repo was created)

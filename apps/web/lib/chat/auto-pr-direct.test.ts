@@ -296,6 +296,13 @@ describe("performAutoCreatePr", () => {
       prUrl: "https://github.com/acme/repo/pull/42",
     } satisfies AutoCreatePrResult);
     expect(getUserGitHubTokenSpy).toHaveBeenCalledWith("user-1");
+    const setUrlCall = execSpy.mock.calls.find((call) =>
+      String(call[0]).includes("git remote set-url origin"),
+    );
+    expect(setUrlCall?.[0]).toContain(
+      'git remote set-url origin "https://github.com/acme/repo.git"',
+    );
+    expect(String(setUrlCall?.[0])).not.toContain("x-access-token");
     expect(generatePullRequestContentFromSandboxSpy).toHaveBeenCalledTimes(1);
     expect(createPullRequestSpy).toHaveBeenCalledWith(
       expect.objectContaining({

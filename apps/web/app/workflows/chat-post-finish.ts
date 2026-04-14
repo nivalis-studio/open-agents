@@ -397,7 +397,11 @@ export async function runAutoCommitStep(params: {
   try {
     const { connectSandbox } = await import("@open-harness/sandbox");
     const { performAutoCommit } = await import("@/lib/chat/auto-commit-direct");
-    const sandbox = await connectSandbox(params.sandboxState);
+    const { getUserGitHubToken } = await import("@/lib/github/user-token");
+    const userToken = await getUserGitHubToken(params.userId);
+    const sandbox = await connectSandbox(params.sandboxState, {
+      githubToken: userToken ?? undefined,
+    });
     return await performAutoCommit({
       sandbox,
       userId: params.userId,
@@ -428,7 +432,11 @@ export async function runAutoCreatePrStep(params: {
   try {
     const { connectSandbox } = await import("@open-harness/sandbox");
     const { performAutoCreatePr } = await import("@/lib/chat/auto-pr-direct");
-    const sandbox = await connectSandbox(params.sandboxState);
+    const { getUserGitHubToken } = await import("@/lib/github/user-token");
+    const userToken = await getUserGitHubToken(params.userId);
+    const sandbox = await connectSandbox(params.sandboxState, {
+      githubToken: userToken ?? undefined,
+    });
     const result = await performAutoCreatePr({
       sandbox,
       userId: params.userId,

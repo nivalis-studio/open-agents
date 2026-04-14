@@ -156,8 +156,6 @@ export async function GET() {
         userBody: userResponse.ok ? "(ok)" : userBody,
         orgsStatus: orgsResponse.status,
         orgsBody: orgsResponse.ok ? "(ok)" : orgsBody,
-        tokenLength: token.length,
-        tokenPrefix: token.substring(0, 8) + "...",
       });
       return NextResponse.json(
         { error: "Failed to fetch GitHub data" },

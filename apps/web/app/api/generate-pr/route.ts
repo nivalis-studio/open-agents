@@ -12,8 +12,9 @@ import {
   sleepForForkRetry,
 } from "@/app/api/generate-pr/_lib/generate-pr-helpers";
 import { getGitHubAccount } from "@/lib/db/accounts";
+import { consumeUserRateLimit } from "@/lib/db/api-rate-limits";
 import { getSessionById, updateSession } from "@/lib/db/sessions";
-import { buildGitHubAuthRemoteUrl } from "@/lib/github/repo-identifiers";
+import { buildGitHubRepoUrl } from "@/lib/github/repo-identifiers";
 import { generatePullRequestContentFromSandbox } from "@/lib/git/pr-content";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { getAppCoAuthorTrailer } from "@/lib/github/app-auth";
@@ -22,6 +23,11 @@ import { getServerSession } from "@/lib/session/get-server-session";
 
 // Allow up to 2 minutes for AI generation and git operations
 export const maxDuration = 120;
+
+const GENERATE_PR_RATE_LIMIT = {
+  maxRequests: 6,
+  windowMs: 10 * 60_000,
+} as const;
 
 interface GeneratePRRequest {
   sessionId: string;
@@ -95,10 +101,8 @@ export async function POST(req: Request) {
     );
   }
 
-  // 3. Connect to sandbox
-  const sandbox = await connectSandbox(sessionRecord.sandboxState);
-  const cwd = sandbox.workingDirectory;
   let userToken: string | null = null;
+  let repoRemoteUrl: string | null = null;
 
   if (sessionRecord.repoOwner && sessionRecord.repoName) {
     userToken = await getUserGitHubToken(session.user.id);
@@ -109,18 +113,46 @@ export async function POST(req: Request) {
       );
     }
 
-    const authUrl = buildGitHubAuthRemoteUrl({
-      token: userToken,
+    repoRemoteUrl = buildGitHubRepoUrl({
       owner: sessionRecord.repoOwner,
       repo: sessionRecord.repoName,
+      withGitSuffix: true,
     });
-    if (!authUrl) {
+    if (!repoRemoteUrl) {
       return Response.json(
         { error: "Invalid repository configuration" },
         { status: 400 },
       );
     }
-    await sandbox.exec(`git remote set-url origin "${authUrl}"`, cwd, 5000);
+  }
+
+  const rateLimitResult = await consumeUserRateLimit({
+    userId: session.user.id,
+    action: "generate-pr",
+    ...GENERATE_PR_RATE_LIMIT,
+  });
+  if (!rateLimitResult.allowed) {
+    return Response.json(
+      { error: "Too many PR generation requests. Please try again later." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rateLimitResult.retryAfterSeconds) },
+      },
+    );
+  }
+
+  // 3. Connect to sandbox
+  const sandbox = await connectSandbox(sessionRecord.sandboxState, {
+    githubToken: userToken ?? undefined,
+  });
+  const cwd = sandbox.workingDirectory;
+
+  if (repoRemoteUrl) {
+    await sandbox.exec(
+      `git remote set-url origin "${repoRemoteUrl}"`,
+      cwd,
+      5000,
+    );
   }
 
   // 3a. Resolve live branch from sandbox
@@ -482,7 +514,17 @@ Respond with ONLY the commit message, nothing else.`,
           }
 
           const { forkRepoName } = forkResult;
-          const forkAuthUrl = `https://x-access-token:${userToken}@github.com/${forkOwner}/${forkRepoName}.git`;
+          const forkRemoteUrl = buildGitHubRepoUrl({
+            owner: forkOwner,
+            repo: forkRepoName,
+            withGitSuffix: true,
+          });
+          if (!forkRemoteUrl) {
+            return Response.json(
+              { error: "Failed to configure fork remote" },
+              { status: 500 },
+            );
+          }
 
           await sandbox.exec(
             "git remote remove fork 2>/dev/null || true",
@@ -490,7 +532,7 @@ Respond with ONLY the commit message, nothing else.`,
             10000,
           );
           const addForkResult = await sandbox.exec(
-            `git remote add fork "${forkAuthUrl}"`,
+            `git remote add fork "${forkRemoteUrl}"`,
             cwd,
             10000,
           );

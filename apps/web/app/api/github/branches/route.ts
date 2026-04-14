@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchGitHubBranches } from "@/lib/github/api";
+import {
+  isValidGitHubRepoName,
+  isValidGitHubRepoOwner,
+} from "@/lib/github/repo-identifiers";
 import { getUserGitHubToken } from "@/lib/github/user-token";
 import { getServerSession } from "@/lib/session/get-server-session";
 
@@ -102,7 +106,7 @@ async function fetchGitHubRepoInfo(
   token?: string,
 ): Promise<RepoInfo | null> {
   const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}`,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
     {
       headers: getGitHubHeaders(token),
       cache: "no-store",
@@ -130,7 +134,7 @@ async function fetchMatchingBranches(
 } | null> {
   const normalizedLimit = normalizeGitHubLimit(limit);
   const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/git/matching-refs/heads/${encodeURIComponent(query)}`,
+    `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/git/matching-refs/heads/${encodeURIComponent(query)}`,
     {
       headers: getGitHubHeaders(token),
       cache: "no-store",
@@ -185,7 +189,7 @@ async function fetchPublicGitHubBranches(
   const maxPages = normalizedLimit ? 1 : 10;
   for (let page = 1; page <= maxPages; page += 1) {
     const branchesResponse = await fetch(
-      `https://api.github.com/repos/${owner}/${repo}/branches?per_page=${perPage}&page=${page}`,
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches?per_page=${perPage}&page=${page}`,
       {
         headers: getGitHubHeaders(),
         cache: "no-store",
@@ -282,6 +286,13 @@ export async function GET(request: NextRequest) {
   if (!owner || !repo) {
     return NextResponse.json(
       { error: "Owner and repo parameters are required" },
+      { status: 400 },
+    );
+  }
+
+  if (!isValidGitHubRepoOwner(owner) || !isValidGitHubRepoName(repo)) {
+    return NextResponse.json(
+      { error: "Invalid owner or repo parameter" },
       { status: 400 },
     );
   }

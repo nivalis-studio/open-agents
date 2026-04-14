@@ -7,7 +7,7 @@ import {
 } from "@/lib/github/client";
 import { fetchGitHubBranches } from "@/lib/github/api";
 import {
-  buildGitHubAuthRemoteUrl,
+  buildGitHubRepoUrl,
   isValidGitHubRepoName,
   isValidGitHubRepoOwner,
 } from "@/lib/github/repo-identifiers";
@@ -147,13 +147,13 @@ export async function performAutoCreatePr(
     };
   }
 
-  const authUrl = buildGitHubAuthRemoteUrl({
-    token: userToken,
+  const remoteUrl = buildGitHubRepoUrl({
     owner: repoOwner,
     repo: repoName,
+    withGitSuffix: true,
   });
 
-  if (!authUrl) {
+  if (!remoteUrl) {
     return {
       created: false,
       syncedExisting: false,
@@ -163,7 +163,7 @@ export async function performAutoCreatePr(
     };
   }
 
-  await sandbox.exec(`git remote set-url origin "${authUrl}"`, cwd, 10000);
+  await sandbox.exec(`git remote set-url origin "${remoteUrl}"`, cwd, 10000);
 
   const defaultBranch = await resolveDefaultBranch({
     sandbox,

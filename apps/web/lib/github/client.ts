@@ -1,4 +1,5 @@
 import { Octokit } from "@octokit/rest";
+import { parseGitHubRepoUrl } from "./repo-identifiers";
 import { getUserGitHubToken } from "./user-token";
 
 type OctokitResult =
@@ -134,14 +135,8 @@ function getGitHubErrorMessage(error: unknown): string | null {
   return null;
 }
 
-export function parseGitHubUrl(
-  repoUrl: string,
-): { owner: string; repo: string } | null {
-  const match = repoUrl.match(/github\.com[/:]([.\w-]+)\/([.\w-]+?)(\.git)?$/);
-  if (match && match[1] && match[2]) {
-    return { owner: match[1], repo: match[2] };
-  }
-  return null;
+export function parseGitHubUrl(repoUrl: string) {
+  return parseGitHubRepoUrl(repoUrl);
 }
 
 const URL_PATTERN = /https?:\/\/[^\s<>()\]]+/g;

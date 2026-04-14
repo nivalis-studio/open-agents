@@ -62,6 +62,7 @@ let currentVercelAuthInfo: TestVercelAuthInfo | null;
 let currentGitHubToken: string | null;
 let currentDotenvContent: string;
 let currentDotenvError: Error | null;
+let sandboxRateLimitAllowed: boolean;
 
 mock.module("@/lib/session/get-server-session", () => ({
   getServerSession: async () => ({
@@ -103,6 +104,13 @@ mock.module("@/lib/vercel/projects", () => ({
     }
     return currentDotenvContent;
   },
+}));
+
+mock.module("@/lib/db/api-rate-limits", () => ({
+  consumeUserRateLimit: async () => ({
+    allowed: sandboxRateLimitAllowed,
+    retryAfterSeconds: 900,
+  }),
 }));
 
 mock.module("@/lib/db/sessions", () => ({
@@ -181,6 +189,7 @@ describe("/api/sandbox lifecycle kicks", () => {
     currentGitHubToken = null;
     currentDotenvContent = 'API_KEY="secret"\n';
     currentDotenvError = null;
+    sandboxRateLimitAllowed = true;
     sessionRecord = {
       id: "session-1",
       userId: "user-1",
@@ -258,7 +267,7 @@ describe("/api/sandbox lifecycle kicks", () => {
       state: {
         type: "vercel",
         source: {
-          repo: "https://github.com/acme/private-repo",
+          repo: "https://github.com/acme/private-repo.git",
           branch: "main",
         },
       },
@@ -267,6 +276,53 @@ describe("/api/sandbox lifecycle kicks", () => {
       },
     });
     expect(connectConfigs[0]?.state.source).not.toHaveProperty("token");
+  });
+
+  test("rejects repo URLs that do not resolve to a canonical GitHub repository", async () => {
+    const { POST } = await routeModulePromise;
+
+    currentGitHubToken = "github-user-token";
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repoUrl: "https://github.com@evil.example/acme/private-repo",
+          branch: "main",
+          sandboxType: "vercel",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      error: "Invalid GitHub repository URL",
+    });
+    expect(connectConfigs).toHaveLength(0);
+  });
+
+  test("returns 429 when sandbox creation is rate limited", async () => {
+    const { POST } = await routeModulePromise;
+    sandboxRateLimitAllowed = false;
+
+    const response = await POST(
+      new Request("http://localhost/api/sandbox", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: "session-1",
+          sandboxType: "vercel",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("900");
+    await expect(response.json()).resolves.toEqual({
+      error: "Too many sandbox creation requests. Please try again later.",
+    });
+    expect(connectConfigs).toHaveLength(0);
   });
 
   test("new vercel sandbox does not sync linked Development env vars while code is commented out", async () => {

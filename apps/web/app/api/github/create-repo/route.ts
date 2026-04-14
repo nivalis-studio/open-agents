@@ -87,7 +87,9 @@ export async function POST(req: Request) {
   }
 
   // 5. Connect to sandbox
-  const sandbox = await connectSandbox(sessionRecord.sandboxState);
+  const sandbox = await connectSandbox(sessionRecord.sandboxState, {
+    githubToken: repoToken,
+  });
   const cwd = sandbox.workingDirectory;
 
   const workflowResult = await runCreateRepoWorkflow({

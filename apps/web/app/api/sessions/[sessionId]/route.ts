@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { z } from "zod";
 import {
   deleteSession,
   getSessionById,
@@ -8,14 +9,18 @@ import { archiveSession } from "@/lib/sandbox/archive-session";
 import { hasRuntimeSandboxState } from "@/lib/sandbox/utils";
 import { getServerSession } from "@/lib/session/get-server-session";
 
-interface UpdateSessionRequest {
-  title?: string;
-  status?: "running" | "completed" | "failed" | "archived";
-  linesAdded?: number;
-  linesRemoved?: number;
-  prNumber?: number;
-  prStatus?: "open" | "merged" | "closed";
-}
+const updateSessionRequestSchema = z
+  .object({
+    title: z.string().trim().min(1).optional(),
+    status: z.enum(["running", "completed", "failed", "archived"]).optional(),
+    linesAdded: z.number().int().nonnegative().optional(),
+    linesRemoved: z.number().int().nonnegative().optional(),
+    prNumber: z.number().int().nonnegative().optional(),
+    prStatus: z.enum(["open", "merged", "closed"]).optional(),
+  })
+  .strict();
+
+type UpdateSessionRequest = z.infer<typeof updateSessionRequestSchema>;
 
 export async function GET(
   _req: Request,
@@ -60,18 +65,28 @@ export async function PATCH(
     return Response.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  let body: UpdateSessionRequest;
+  let body: unknown;
   try {
-    body = (await req.json()) as UpdateSessionRequest;
+    body = await req.json();
   } catch {
     return Response.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const parsedBody = updateSessionRequestSchema.safeParse(body);
+  if (!parsedBody.success) {
+    return Response.json(
+      { error: "Invalid session update payload" },
+      { status: 400 },
+    );
+  }
+
+  const requestBody = parsedBody.data;
+
   const shouldStopSandboxAfterArchive =
-    body.status === "archived" && existingSession.status !== "archived";
+    requestBody.status === "archived" && existingSession.status !== "archived";
 
   const shouldUnarchive =
-    body.status === "running" && existingSession.status === "archived";
+    requestBody.status === "running" && existingSession.status === "archived";
 
   if (
     shouldUnarchive &&
@@ -93,7 +108,7 @@ export async function PATCH(
       lifecycleError: null;
       sandboxExpiresAt: null;
       hibernateAfter: null;
-    }> = { ...body };
+    }> = { ...requestBody };
 
   if (shouldUnarchive) {
     // Reset lifecycle state so the session can be resumed normally.

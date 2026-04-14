@@ -424,5 +424,23 @@ export const usageEvents = pgTable("usage_events", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
+export const apiRequestLogs = pgTable(
+  "api_request_logs",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    action: text("action").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("api_request_logs_user_action_idx").on(table.userId, table.action),
+    index("api_request_logs_created_at_idx").on(table.createdAt),
+  ],
+);
+
 export type UsageEvent = typeof usageEvents.$inferSelect;
 export type NewUsageEvent = typeof usageEvents.$inferInsert;
+export type ApiRequestLog = typeof apiRequestLogs.$inferSelect;
+export type NewApiRequestLog = typeof apiRequestLogs.$inferInsert;

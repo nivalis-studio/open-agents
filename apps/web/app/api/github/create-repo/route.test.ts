@@ -41,7 +41,10 @@ const updateCalls: Array<{
   patch: Record<string, unknown>;
 }> = [];
 const workflowCalls: Array<Record<string, unknown>> = [];
-const connectStates: unknown[] = [];
+const connectCalls: Array<{
+  state: unknown;
+  options?: Record<string, unknown>;
+}> = [];
 
 let authSession: AuthSession;
 let sessionRecord: SessionRecord | null;
@@ -84,8 +87,8 @@ mock.module("@/lib/sandbox/utils", () => ({
 }));
 
 mock.module("@open-harness/sandbox", () => ({
-  connectSandbox: async (state: unknown) => {
-    connectStates.push(state);
+  connectSandbox: async (state: unknown, options?: Record<string, unknown>) => {
+    connectCalls.push({ state, options });
     return {
       workingDirectory: "/sandbox",
     };
@@ -113,7 +116,7 @@ describe("/api/github/create-repo", () => {
   beforeEach(() => {
     updateCalls.length = 0;
     workflowCalls.length = 0;
-    connectStates.length = 0;
+    connectCalls.length = 0;
 
     authSession = {
       user: {
@@ -225,6 +228,12 @@ describe("/api/github/create-repo", () => {
       accountType: "User",
       repoToken: "user-token",
     });
+    expect(connectCalls).toEqual([
+      {
+        state: { type: "vercel" },
+        options: { githubToken: "user-token" },
+      },
+    ]);
 
     expect(updateCalls).toEqual([
       {

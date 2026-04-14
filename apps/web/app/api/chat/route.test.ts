@@ -48,6 +48,7 @@ let preferencesState = {
 };
 let cachedSkillsState: unknown = null;
 let discoverSkillDirsCalls: string[][] = [];
+let rateLimitAllowed = true;
 
 const compareAndSetChatActiveStreamIdSpy = mock(async () => {
   const nextResult = compareAndSetResults.shift();
@@ -149,6 +150,13 @@ mock.module("./_lib/persist-tool-results", () => ({
     persistAssistantMessagesWithToolResultsSpy,
 }));
 
+mock.module("@/lib/db/api-rate-limits", () => ({
+  consumeUserRateLimit: async () => ({
+    allowed: rateLimitAllowed,
+    retryAfterSeconds: 60,
+  }),
+}));
+
 mock.module("@/lib/db/sessions", () => ({
   compareAndSetChatActiveStreamId: compareAndSetChatActiveStreamIdSpy,
   countUserMessagesByUserId: async () => existingUserMessageCount,
@@ -246,6 +254,7 @@ describe("/api/chat route", () => {
     startCalls = [];
     cachedSkillsState = null;
     discoverSkillDirsCalls = [];
+    rateLimitAllowed = true;
     existingUserMessageCount = 0;
     existingChatMessage = null;
     preferencesState = {
@@ -289,6 +298,20 @@ describe("/api/chat route", () => {
     const response = await POST(createValidRequest());
 
     expect(response.ok).toBe(true);
+  });
+
+  test("returns 429 when the chat workflow rate limit is exceeded", async () => {
+    rateLimitAllowed = false;
+    const { POST } = await routeModulePromise;
+
+    const response = await POST(createValidRequest());
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("60");
+    await expect(response.json()).resolves.toEqual({
+      error: "Too many chat requests. Please wait a moment and try again.",
+    });
+    expect(startCalls).toHaveLength(0);
   });
 
   test("blocks a sixth message for non-Vercel trial users on the managed deployment", async () => {
