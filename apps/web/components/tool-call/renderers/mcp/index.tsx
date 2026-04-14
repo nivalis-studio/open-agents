@@ -11,8 +11,8 @@ import {
   isUUID,
   extractOutputText,
 } from "./shared";
-import { formatNotionOutput } from "./notion";
-import { formatGranolaOutput } from "./granola";
+import { formatNotionOutput, NOTION_TOOL_LABELS } from "./notion";
+import { formatGranolaOutput, GRANOLA_TOOL_LABELS } from "./granola";
 import { formatDefaultOutput } from "./default";
 
 // ---------------------------------------------------------------------------
@@ -21,13 +21,30 @@ import { formatDefaultOutput } from "./default";
 
 type OutputFormatter = (rawOutput: unknown) => ReactNode | undefined;
 
-const providerFormatters: Record<string, OutputFormatter> = {
-  notion: formatNotionOutput,
-  granola: formatGranolaOutput,
+interface ProviderConfig {
+  formatter: OutputFormatter;
+  toolLabels?: Record<string, string>;
+}
+
+/**
+ * Registry of provider-specific configurations.
+ * To add a new MCP provider:
+ * 1. Create a new file (e.g. `figma.tsx`) with a formatter and optional tool labels
+ * 2. Add an entry here
+ */
+const providers: Record<string, ProviderConfig> = {
+  notion: {
+    formatter: formatNotionOutput,
+    toolLabels: NOTION_TOOL_LABELS,
+  },
+  granola: {
+    formatter: formatGranolaOutput,
+    toolLabels: GRANOLA_TOOL_LABELS,
+  },
 };
 
-function getOutputFormatter(provider: string): OutputFormatter {
-  return providerFormatters[provider] ?? formatDefaultOutput;
+function getProviderConfig(provider: string): ProviderConfig {
+  return providers[provider] ?? { formatter: formatDefaultOutput };
 }
 
 // ---------------------------------------------------------------------------
@@ -43,17 +60,17 @@ export function McpRenderer({
   const fullToolName =
     part.type === "dynamic-tool" ? part.toolName : String(part.type);
   const { provider, toolName } = parseMcpToolName(fullToolName);
-  const actionLabel = getActionLabel(toolName, provider);
+  const config = getProviderConfig(provider);
+  const actionLabel = getActionLabel(toolName, provider, config.toolLabels);
   const icon = getProviderIcon(provider);
 
   const input = part.input as Record<string, unknown> | undefined;
   const rawOutput =
     part.state === "output-available" ? (part.output as unknown) : undefined;
 
-  // Try to get a better summary: if input is just an ID, use output title
+  // If input summary is just a UUID, try to pull a title from the output
   const summary = useMemo(() => {
     const inputSummary = getSummary(input);
-    // If the summary is "..." or looks like a UUID, try to get title from output
     if ((inputSummary === "..." || isUUID(inputSummary)) && rawOutput != null) {
       const text = extractOutputText(rawOutput);
       if (text) {
@@ -62,7 +79,6 @@ export function McpRenderer({
           if (typeof parsed.title === "string") return parsed.title;
           if (typeof parsed.name === "string") return parsed.name;
         } catch {
-          // Try to extract title from XML-ish content
           const titleMatch = text.match(
             /(?:title|name)["=:]\s*"?([^"<\n]{2,60})/i,
           );
@@ -73,11 +89,10 @@ export function McpRenderer({
     return inputSummary;
   }, [input, rawOutput]);
 
-  const formatOutput = getOutputFormatter(provider);
   const expandedContent = useMemo(() => {
     if (rawOutput == null) return undefined;
-    return formatOutput(rawOutput);
-  }, [rawOutput, formatOutput]);
+    return config.formatter(rawOutput);
+  }, [rawOutput, config]);
 
   return (
     <ToolLayout

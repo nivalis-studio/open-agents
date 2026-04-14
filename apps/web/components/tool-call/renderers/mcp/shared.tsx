@@ -30,7 +30,7 @@ export type StructuredOutput =
   | { kind: "table"; rows: TableRow[]; columns: string[] };
 
 // ---------------------------------------------------------------------------
-// Utilities
+// Tool name parsing
 // ---------------------------------------------------------------------------
 
 /**
@@ -41,7 +41,6 @@ export function parseMcpToolName(fullName: string): {
   provider: string;
   toolName: string;
 } {
-  // Strip the "mcp_" prefix
   const withoutPrefix = fullName.slice(4);
   const underscoreIdx = withoutPrefix.indexOf("_");
   if (underscoreIdx === -1) {
@@ -53,36 +52,48 @@ export function parseMcpToolName(fullName: string): {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Action labels
+// ---------------------------------------------------------------------------
+
 /**
- * Generate a human-friendly action label based on the tool name and provider.
+ * Generate a human-friendly action label from a tool name.
+ * Provider-specific label maps can be passed in to override the regex fallback.
  */
-export function getActionLabel(toolName: string, provider: string): string {
+export function getActionLabel(
+  toolName: string,
+  provider: string,
+  providerLabels?: Record<string, string>,
+): string {
+  if (providerLabels) {
+    const stripped = toolName
+      .replace(`${provider}_`, "")
+      .replace(`${provider}-`, "");
+    const label = providerLabels[toolName] ?? providerLabels[stripped];
+    if (label) return label;
+  }
+
   const capitalized = provider.charAt(0).toUpperCase() + provider.slice(1);
   const lower = toolName.toLowerCase();
 
-  if (/query|search|find|list|get/.test(lower)) {
+  if (/query|search|find|list|get/.test(lower))
     return `Searching ${capitalized}`;
-  }
-  if (/create|add|insert/.test(lower)) {
-    return `Creating in ${capitalized}`;
-  }
-  if (/update|edit|modify/.test(lower)) {
-    return `Updating ${capitalized}`;
-  }
-  if (/delete|remove/.test(lower)) {
-    return `Deleting from ${capitalized}`;
-  }
+  if (/create|add|insert/.test(lower)) return `Creating in ${capitalized}`;
+  if (/update|edit|modify/.test(lower)) return `Updating ${capitalized}`;
+  if (/delete|remove/.test(lower)) return `Deleting from ${capitalized}`;
+  if (/fetch|read|view/.test(lower)) return `Reading ${capitalized}`;
+  if (/move|duplicate|copy/.test(lower)) return `Organizing ${capitalized}`;
+  if (/comment/.test(lower)) return `Commenting in ${capitalized}`;
   return `Using ${capitalized}`;
 }
 
-/**
- * Get the most relevant input field to display as the summary.
- * For object/array values, extracts meaningful text rather than raw JSON.
- */
+// ---------------------------------------------------------------------------
+// Input summary
+// ---------------------------------------------------------------------------
+
 export function getSummary(input: Record<string, unknown> | undefined): string {
   if (!input) return "...";
 
-  // Try common field names in order of priority
   for (const key of [
     "query",
     "search",
@@ -100,14 +111,12 @@ export function getSummary(input: Record<string, unknown> | undefined): string {
       if (typeof val === "string") {
         return val.length > 80 ? `${val.slice(0, 77)}...` : val;
       }
-      // For objects like filter/sort params, extract the readable part
       if (typeof val === "object") {
         return summarizeObject(val as Record<string, unknown>);
       }
     }
   }
 
-  // Fall back to first string value (skip UUIDs and IDs)
   for (const [key, val] of Object.entries(input)) {
     if (key === "id" || key === "page_id" || key === "database_id") continue;
     if (typeof val === "string" && val.length > 0 && !isUUID(val)) {
@@ -115,7 +124,6 @@ export function getSummary(input: Record<string, unknown> | undefined): string {
     }
   }
 
-  // Try to build a meaningful summary from multiple fields
   const parts: string[] = [];
   for (const [_key, val] of Object.entries(input)) {
     if (val == null) continue;
@@ -142,7 +150,6 @@ export function isUUID(s: string): boolean {
 }
 
 export function summarizeObject(obj: Record<string, unknown>): string {
-  // Try to find a human-readable value inside the object
   const readable: string[] = [];
   for (const val of Object.values(obj)) {
     if (typeof val === "string" && val.length > 0 && val.length < 60) {
@@ -184,7 +191,6 @@ export function getProviderIcon(provider: string) {
 export function extractOutputText(output: unknown): string | null {
   if (output == null) return null;
 
-  // MCP CallToolResult has a `content` array
   if (typeof output === "object" && "content" in (output as object)) {
     const result = output as { content?: unknown[] };
     if (Array.isArray(result.content)) {
@@ -218,15 +224,10 @@ export function isValidExternalUrl(url: unknown): url is string {
   }
 }
 
-/**
- * Format an ISO timestamp or relative timestamp string into a short relative label.
- */
 export function formatTimestamp(ts: string): string {
-  // Already a relative string like "Past day" or "2 months ago"
   const cleaned = ts.replace(/\s*\([\d-]+\)\s*$/, "").trim();
   if (!/^\d{4}-\d{2}-\d{2}/.test(cleaned)) return cleaned;
 
-  // ISO timestamp — convert to relative
   try {
     const date = new Date(cleaned);
     if (Number.isNaN(date.getTime())) return cleaned;
@@ -248,9 +249,15 @@ export function formatTimestamp(ts: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Structured output parsing
+// Generic structured output parsing
 // ---------------------------------------------------------------------------
 
+/**
+ * Attempt to parse MCP output into a structured format.
+ * This is provider-agnostic — only handles common patterns.
+ * Provider-specific parsing (e.g. Notion URL construction) belongs in
+ * the provider's own formatter file.
+ */
 export function tryParseStructuredOutput(
   output: unknown,
 ): StructuredOutput | null {
@@ -259,19 +266,18 @@ export function tryParseStructuredOutput(
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>;
 
-    // Search results: { results: [{ title, url?, type? }], type: "ai_search" }
+    // Array of results with title fields
     if (Array.isArray(parsed.results) && parsed.results.length > 0) {
       const first = parsed.results[0] as Record<string, unknown>;
 
-      // Has title field → search-style results
       if (typeof first.title === "string" || typeof first.Name === "string") {
-        // Check if it looks like a table (objects with named fields, no url/type)
-        const hasUrls = parsed.results.some(
+        // Has URLs or type fields → search results
+        const isSearch = parsed.results.some(
           (r: Record<string, unknown>) =>
             isValidExternalUrl(r.url) || typeof r.type === "string",
         );
 
-        if (hasUrls) {
+        if (isSearch) {
           return {
             kind: "search",
             results: (parsed.results as Record<string, unknown>[]).map((r) => ({
@@ -285,7 +291,7 @@ export function tryParseStructuredOutput(
           };
         }
 
-        // Table-like data (array of objects with named keys)
+        // Table-like data
         const columns = Object.keys(first).filter(
           (k) => k !== "id" && k !== "data_source_ids",
         );
@@ -297,7 +303,7 @@ export function tryParseStructuredOutput(
       }
     }
 
-    // Single page result: { metadata, title, url, text }
+    // Single page/document result: { title, text, ... }
     if (typeof parsed.title === "string" && typeof parsed.text === "string") {
       return {
         kind: "page",
