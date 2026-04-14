@@ -493,19 +493,7 @@ export async function runAgentWorkflow(options: Options) {
       options.maxSteps === undefined || step < options.maxSteps;
       step++
     ) {
-      const result = await runAgentStep(
-        modelMessages,
-        originalMessagesForStep,
-        assistantId,
-        writable,
-        workflowRunId,
-        options.chatId,
-        options.sessionId,
-        options.modelId,
-        options.agentOptions,
-        options.userId,
-        options.enabledMcpConnectionIds,
-      );
+      let result: Awaited<ReturnType<typeof runAgentStep>>;
 
       try {
         result = await runAgentStep(
@@ -519,6 +507,8 @@ export async function runAgentWorkflow(options: Options) {
           options.modelId,
           options.agentOptions,
           step + 1,
+          options.userId,
+          options.enabledMcpConnectionIds,
         );
       } catch (error) {
         if (isStepTimingError(error)) {
@@ -775,6 +765,7 @@ const runAgentStep = async (
   sessionId: string,
   selectedModelId: string,
   agentOptions: OpenHarnessAgentCallOptions,
+  stepNumber: number,
   userId: string,
   enabledMcpConnectionIds?: string[],
 ) => {

@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import useSWR, { useSWRConfig } from "swr";
 import { McpConnectionsSection } from "./mcp-connections-section";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -360,6 +361,33 @@ export function AccountsSection() {
             </Button>
           )}
         </div>
+
+        <div className="space-y-4 p-4">
+          {!hasGitHub ? (
+            <NotConnectedState />
+          ) : connectionLoading && !connectionData ? (
+            <ConnectionLoadingSkeleton />
+          ) : reconnectRequired && !connectionData ? (
+            <ReconnectRequiredState
+              reconnectReason={reason}
+              tokenExpired={tokenExpired}
+            />
+          ) : connectionError && !connectionData ? (
+            <ConnectionErrorState onRetry={handleRefresh} />
+          ) : connectionData ? (
+            <ConnectedState
+              data={connectionData}
+              reconnectRequired={reconnectRequired}
+              reconnectReason={reason}
+              tokenExpired={tokenExpired}
+              unlinking={unlinking}
+              onUnlink={handleUnlink}
+            />
+          ) : (
+            <NotConnectedState />
+          )}
+        </div>
+      </div>
 
       {/* ── MCP connections ── */}
       <McpConnectionsSection />
