@@ -1,5 +1,8 @@
 import { ImageResponse } from "next/og";
-import { getPublicUsageProfile } from "@/lib/db/public-usage-profile";
+import {
+  getPublicUsageProfile,
+  displayModelId,
+} from "@/lib/db/public-usage-profile";
 
 interface OgRouteContext {
   params: Promise<{ username: string }>;
@@ -15,8 +18,57 @@ export async function GET(request: Request, context: OgRouteContext) {
     return new Response("Not found", { status: 404 });
   }
 
-  const topModel = profile.topModels[0]?.label ?? "No tracked model yet";
   const displayName = profile.user.name?.trim() || profile.user.username;
+  const topModel = profile.topModels[0];
+  const topModelLabel = topModel ? displayModelId(topModel.modelId) : null;
+
+  // ── Activity grid ────────────────────────────────────────────────────────
+  const activityData = profile.dailyActivity;
+  const maxTokens = Math.max(
+    ...activityData.map(
+      (d) => d.inputTokens + d.outputTokens + d.messageCount * 100,
+    ),
+    1,
+  );
+
+  const today = new Date();
+  const gridWeeks = 38;
+  const startDate = new Date(today);
+  startDate.setDate(startDate.getDate() - gridWeeks * 7 + 1);
+  startDate.setDate(startDate.getDate() - startDate.getDay());
+
+  const activityMap = new Map<string, number>();
+  for (const d of activityData) {
+    activityMap.set(
+      d.date,
+      d.inputTokens + d.outputTokens + d.messageCount * 100,
+    );
+  }
+
+  const weeks: number[][] = [];
+  const cursor = new Date(startDate);
+  for (let w = 0; w < gridWeeks; w++) {
+    const week: number[] = [];
+    for (let d = 0; d < 7; d++) {
+      const key = cursor.toISOString().slice(0, 10);
+      week.push(activityMap.get(key) ?? 0);
+      cursor.setDate(cursor.getDate() + 1);
+    }
+    weeks.push(week);
+  }
+
+  const cellSize = 13;
+  const cellGap = 3;
+
+  function getColor(value: number): string {
+    if (value === 0) return "rgba(255, 255, 255, 0.03)";
+    const ratio = value / maxTokens;
+    if (ratio < 0.15) return "rgba(255, 255, 255, 0.07)";
+    if (ratio < 0.35) return "rgba(255, 255, 255, 0.14)";
+    if (ratio < 0.6) return "rgba(255, 255, 255, 0.24)";
+    if (ratio < 0.8) return "rgba(255, 255, 255, 0.38)";
+    return "rgba(255, 255, 255, 0.55)";
+  }
 
   return new ImageResponse(
     <div
@@ -32,6 +84,7 @@ export async function GET(request: Request, context: OgRouteContext) {
           'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
+      {/* Radial glow */}
       <div
         style={{
           position: "absolute",
@@ -42,6 +95,7 @@ export async function GET(request: Request, context: OgRouteContext) {
         }}
       />
 
+      {/* Border frame */}
       <div
         style={{
           position: "absolute",
@@ -52,226 +106,260 @@ export async function GET(request: Request, context: OgRouteContext) {
         }}
       />
 
+      {/* Activity grid — decorative bg, top-right */}
       <div
         style={{
           position: "absolute",
-          inset: 28,
-          padding: "52px 56px",
+          top: 56,
+          right: 56,
           display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-between",
+          gap: cellGap,
         }}
       >
+        {weeks.map((week, wi) => (
+          <div
+            key={wi}
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: cellGap,
+            }}
+          >
+            {week.map((val, di) => (
+              <div
+                key={di}
+                style={{
+                  width: cellSize,
+                  height: cellSize,
+                  borderRadius: 3,
+                  background: getColor(val),
+                  display: "flex",
+                }}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Fade gradients over grid */}
+      <div
+        style={{
+          position: "absolute",
+          top: 28,
+          right: 28,
+          width: 700,
+          height: 180,
+          display: "flex",
+          background: "linear-gradient(to right, #0a0a0a 5%, transparent 50%)",
+          borderRadius: "24px 24px 0 0",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          top: 160,
+          right: 28,
+          width: 700,
+          height: 100,
+          display: "flex",
+          background: "linear-gradient(to top, #0a0a0a, transparent)",
+        }}
+      />
+
+      {/* Content — using fixed positioning for reliable layout */}
+      {/* Top-left: Open Agents branding */}
+      <div
+        style={{
+          position: "absolute",
+          top: 80,
+          left: 84,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
+          <path
+            d="M4 17L10 11L4 5"
+            stroke="rgba(255,255,255,0.5)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M12 19H20"
+            stroke="rgba(255,255,255,0.5)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+          />
+        </svg>
+        <span
+          style={{
+            fontSize: 20,
+            fontWeight: 600,
+            color: "rgba(255, 255, 255, 0.5)",
+            letterSpacing: "-0.01em",
+          }}
+        >
+          Open Agents
+        </span>
+      </div>
+
+      {/* Center-left: Avatar + name */}
+      <div
+        style={{
+          position: "absolute",
+          top: 220,
+          left: 84,
+          display: "flex",
+          alignItems: "center",
+          gap: 18,
+        }}
+      >
+        {profile.user.avatarUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            alt=""
+            src={profile.user.avatarUrl}
+            width={72}
+            height={72}
+            style={{ borderRadius: "50%" }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.1)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 30,
+              fontWeight: 600,
+              color: "rgba(255,255,255,0.5)",
+            }}
+          >
+            {profile.user.username.slice(0, 1).toUpperCase()}
+          </div>
+        )}
         <div
           style={{
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            gap: 24,
+            flexDirection: "column",
+            gap: 4,
           }}
         >
-          <div
+          <span
             style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 22,
-              flex: 1,
+              fontSize: 42,
+              fontWeight: 700,
+              lineHeight: 1,
+              letterSpacing: "-0.03em",
+              color: "#ffffff",
             }}
           >
-            <div
+            {displayName}
+          </span>
+          {displayName !== profile.user.username && (
+            <span
               style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                marginBottom: 4,
-              }}
-            >
-              <svg viewBox="0 0 24 24" width="28" height="28" fill="none">
-                <path
-                  d="M4 17L10 11L4 5"
-                  stroke="rgba(255,255,255,0.5)"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <path
-                  d="M12 19H20"
-                  stroke="rgba(255,255,255,0.5)"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                />
-              </svg>
-              <span
-                style={{
-                  fontSize: 20,
-                  fontWeight: 600,
-                  color: "rgba(255, 255, 255, 0.5)",
-                  letterSpacing: "-0.01em",
-                }}
-              >
-                Open Agents
-              </span>
-            </div>
-
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <span
-                style={{
-                  fontSize: 18,
-                  textTransform: "uppercase",
-                  letterSpacing: 1.6,
-                  color: "rgba(255, 255, 255, 0.45)",
-                  fontWeight: 600,
-                }}
-              >
-                Wrapped
-              </span>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "8px 14px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  background: "rgba(255, 255, 255, 0.04)",
-                  fontSize: 16,
-                  color: "rgba(255, 255, 255, 0.55)",
-                }}
-              >
-                {profile.dateSelection.label}
-              </div>
-            </div>
-
-            <div
-              style={{
-                fontSize: 64,
-                fontWeight: 700,
-                lineHeight: 1,
-                letterSpacing: "-0.04em",
-                color: "#ffffff",
-                maxWidth: 660,
-              }}
-            >
-              {displayName}
-            </div>
-
-            <div style={{ fontSize: 28, color: "rgba(255, 255, 255, 0.45)" }}>
-              @{profile.user.username}
-            </div>
-          </div>
-
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              alignItems: "flex-end",
-              gap: 16,
-              minWidth: 360,
-            }}
-          >
-            <div
-              style={{
-                fontSize: 13,
-                textTransform: "uppercase",
-                letterSpacing: 1.8,
+                fontSize: 22,
                 color: "rgba(255, 255, 255, 0.4)",
-                fontWeight: 600,
               }}
             >
-              Total tokens
-            </div>
-            <div
-              style={{
-                fontSize: 72,
-                lineHeight: 1,
-                fontWeight: 700,
-                letterSpacing: "-0.03em",
-              }}
-            >
-              {formatCompactNumber(profile.totals.totalTokens)}
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 10,
-                width: "100%",
-                marginTop: 4,
-              }}
-            >
-              <Pill
-                label="Messages"
-                value={profile.totals.messageCount.toLocaleString()}
-              />
-              <Pill
-                label="Tool calls"
-                value={profile.totals.toolCallCount.toLocaleString()}
-              />
-              <Pill
-                label="Merge rate"
-                value={`${Math.round(profile.insights.pr.mergeRate * 100)}%`}
-              />
-            </div>
-          </div>
+              @{profile.user.username}
+            </span>
+          )}
         </div>
+      </div>
 
-        <div style={{ display: "flex", gap: 14 }}>
-          <FeatureCard
-            title="Top model"
-            value={topModel}
-            detail={
-              profile.topModels[0]
-                ? `${formatCompactNumber(profile.topModels[0].totalTokens)} tokens`
-                : "No tracked model usage"
-            }
-          />
-          <FeatureCard
-            title="Main agent"
-            value={formatCompactNumber(profile.agentSplit.mainTokens)}
-            detail="Primary agent token volume"
-          />
-          <FeatureCard
-            title="Subagents"
-            value={formatCompactNumber(profile.agentSplit.subagentTokens)}
-            detail="Explorer + executor work"
-          />
-          <FeatureCard
-            title="Top repo"
-            value={
-              profile.topRepositories[0]
-                ? `${profile.topRepositories[0].repoOwner}/${profile.topRepositories[0].repoName}`
-                : "No repo yet"
-            }
-            detail={
-              profile.topRepositories[0]
-                ? `${profile.topRepositories[0].totalLinesChanged.toLocaleString()} lines changed`
-                : "Waiting for tracked sessions"
-            }
-          />
+      {/* Hero token number */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 136,
+          left: 84,
+          display: "flex",
+          alignItems: "flex-end",
+          gap: 16,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 96,
+            fontWeight: 700,
+            lineHeight: 1,
+            letterSpacing: "-0.04em",
+            color: "#ffffff",
+          }}
+        >
+          {formatCompactNumber(profile.totals.totalTokens)}
+        </span>
+        <span
+          style={{
+            fontSize: 28,
+            lineHeight: 1,
+            color: "rgba(255, 255, 255, 0.3)",
+            fontWeight: 500,
+            paddingBottom: 8,
+          }}
+        >
+          tokens
+        </span>
+      </div>
+
+      {/* Bottom row: pills + domain */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 72,
+          left: 84,
+          right: 84,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+        }}
+      >
+        {topModelLabel && <Pill label="Top model" value={topModelLabel} />}
+        <Pill
+          label="Messages"
+          value={profile.totals.messageCount.toLocaleString()}
+        />
+        <Pill
+          label="Tool calls"
+          value={profile.totals.toolCallCount.toLocaleString()}
+        />
+
+        {/* Spacer + domain */}
+        <div
+          style={{
+            display: "flex",
+            flex: 1,
+            justifyContent: "flex-end",
+          }}
+        >
+          <span
+            style={{
+              fontSize: 18,
+              color: "rgba(255, 255, 255, 0.2)",
+              letterSpacing: "0.01em",
+            }}
+          >
+            open-agents.dev
+          </span>
         </div>
       </div>
     </div>,
     {
       width: 1200,
       height: 630,
+      headers: {
+        "Cache-Control":
+          "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400",
+      },
     },
   );
-}
-
-function formatCompactNumber(value: number): string {
-  if (value >= 1_000_000_000) {
-    return `${(value / 1_000_000_000).toFixed(1)}B`;
-  }
-
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`;
-  }
-
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(1)}K`;
-  }
-
-  return value.toLocaleString();
 }
 
 function Pill({ label, value }: { label: string; value: string }) {
@@ -280,74 +368,31 @@ function Pill({ label, value }: { label: string; value: string }) {
       style={{
         display: "flex",
         alignItems: "center",
-        justifyContent: "space-between",
-        padding: "12px 14px",
+        padding: "8px 16px",
         borderRadius: 999,
         border: "1px solid rgba(255, 255, 255, 0.1)",
         background: "rgba(255, 255, 255, 0.04)",
-        fontSize: 20,
+        fontSize: 16,
+        gap: 8,
       }}
     >
-      <span style={{ color: "rgba(255, 255, 255, 0.5)" }}>{label}</span>
-      <span style={{ fontWeight: 600, color: "rgba(255, 255, 255, 0.9)" }}>
+      <span style={{ color: "rgba(255,255,255,0.3)" }}>{label}</span>
+      <span style={{ color: "rgba(255,255,255,0.8)", fontWeight: 600 }}>
         {value}
       </span>
     </div>
   );
 }
 
-function FeatureCard({
-  title,
-  value,
-  detail,
-}: {
-  title: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div
-      style={{
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        borderRadius: 16,
-        padding: 20,
-        background: "rgba(255, 255, 255, 0.03)",
-        border: "1px solid rgba(255, 255, 255, 0.08)",
-      }}
-    >
-      <div
-        style={{
-          fontSize: 14,
-          textTransform: "uppercase",
-          letterSpacing: 1.5,
-          color: "rgba(255, 255, 255, 0.4)",
-        }}
-      >
-        {title}
-      </div>
-      <div
-        style={{
-          fontSize: 26,
-          lineHeight: 1.2,
-          fontWeight: 600,
-          color: "rgba(255, 255, 255, 0.95)",
-          textWrap: "balance",
-        }}
-      >
-        {value}
-      </div>
-      <div
-        style={{
-          fontSize: 14,
-          lineHeight: 1.3,
-          color: "rgba(255, 255, 255, 0.4)",
-        }}
-      >
-        {detail}
-      </div>
-    </div>
-  );
+function formatCompactNumber(value: number): string {
+  if (value >= 1_000_000_000) {
+    return `${(value / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (value >= 1_000_000) {
+    return `${(value / 1_000_000).toFixed(1)}M`;
+  }
+  if (value >= 1_000) {
+    return `${(value / 1_000).toFixed(1)}K`;
+  }
+  return value.toLocaleString();
 }

@@ -40,11 +40,13 @@ const isPreviewDeployment = process.env.VERCEL_ENV === "preview";
 const faviconPath = isPreviewDeployment
   ? "/favicon-preview.svg"
   : "/favicon.ico";
-const metadataBase = process.env.VERCEL_PROJECT_PRODUCTION_URL
-  ? new URL(`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`)
-  : process.env.VERCEL_URL
-    ? new URL(`https://${process.env.VERCEL_URL}`)
-    : new URL("https://open-agents.dev");
+const metadataBase =
+  process.env.VERCEL_ENV === "production" &&
+  process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? new URL(`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`)
+    : process.env.VERCEL_URL
+      ? new URL(`https://${process.env.VERCEL_URL}`)
+      : new URL("https://open-agents.dev");
 
 export const metadata: Metadata = {
   metadataBase,
@@ -53,7 +55,7 @@ export const metadata: Metadata = {
     template: "%s | Open Agents",
   },
   description:
-    "Spawn coding agents that run infinitely in the cloud. Powered by AI SDK, Gateway, Sandbox, and Workflow DevKit.",
+    "Spawn coding agents that run infinitely in the cloud. Powered by AI SDK, Gateway, Sandbox, and Workflow SDK.",
   icons: {
     icon: faviconPath,
     shortcut: faviconPath,

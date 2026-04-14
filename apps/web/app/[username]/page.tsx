@@ -24,22 +24,6 @@ function getSingleSearchParam(
   return null;
 }
 
-function formatCompactNumber(value: number): string {
-  if (value >= 1_000_000_000) {
-    return `${(value / 1_000_000_000).toFixed(1)}B`;
-  }
-
-  if (value >= 1_000_000) {
-    return `${(value / 1_000_000).toFixed(1)}M`;
-  }
-
-  if (value >= 1_000) {
-    return `${(value / 1_000).toFixed(1)}K`;
-  }
-
-  return value.toLocaleString();
-}
-
 export async function generateMetadata({
   params,
   searchParams,
@@ -57,26 +41,20 @@ export async function generateMetadata({
   }
 
   const displayName = profile.user.name?.trim() || profile.user.username;
-  const topModel = profile.topModels[0]?.label;
-  const modelDescription = topModel ? `Top model: ${topModel}.` : "";
   const dateQuery = profile.dateSelection.value
     ? `?date=${encodeURIComponent(profile.dateSelection.value)}`
     : "";
   const publicProfilePath = `/u/${profile.user.username}`;
 
   return {
-    title: `${displayName} · Open Agents Wrapped`,
-    description:
-      `${displayName}'s Open Agents usage profile. ${modelDescription} ${profile.dateSelection.label}.`.trim(),
+    title: displayName,
     openGraph: {
-      title: `${displayName} · Open Agents Wrapped`,
-      description: `${formatCompactNumber(profile.totals.totalTokens)} tokens · ${profile.dateSelection.label}`,
+      title: displayName,
       images: [`${publicProfilePath}/og${dateQuery}`],
     },
     twitter: {
       card: "summary_large_image",
-      title: `${displayName} · Open Agents Wrapped`,
-      description: `${formatCompactNumber(profile.totals.totalTokens)} tokens · ${profile.dateSelection.label}`,
+      title: displayName,
       images: [`${publicProfilePath}/og${dateQuery}`],
     },
   };
